@@ -119,6 +119,190 @@ func TestPipelineReportsFailureWhenSnapshotCreationFails(t *testing.T) {
 	}
 }
 
+func TestPipelineHandlesRepeatedPersistenceAndChangeDuringSubmission(t *testing.T) {
+	baseline := []byte("baseline")
+	first := []byte("first stable version")
+	second := []byte("second stable version")
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var mu sync.Mutex
+	var submissions [][]byte
+	active, maxActive := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(baseline)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		submissions = append(submissions, body)
+		active++
+		if active > maxActive {
+			maxActive = active
+		}
+		attempt := len(submissions)
+		mu.Unlock()
+		if attempt == 1 {
+			close(firstStarted)
+			<-releaseFirst
+		}
+		mu.Lock()
+		active--
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	launcher := &recordingLauncher{opened: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
+			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
+			DownloadURL: server.URL, UploadURL: server.URL,
+		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 10 * time.Millisecond, StabilityDuration: 30 * time.Millisecond}, func(agent.Status) {})
+		done <- err
+	}()
+	<-launcher.opened
+	if err := os.WriteFile(launcher.path, first, 0600); err != nil {
+		t.Fatal(err)
+	}
+	<-firstStarted
+
+	// Re-persisting identical bytes while the first Submission is active must not duplicate it.
+	if err := os.WriteFile(launcher.path, first, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A later distinct Persisted Version must be evaluated after the active Submission.
+	if err := os.WriteFile(launcher.path, second, 0600); err != nil {
+		t.Fatal(err)
+	}
+	close(releaseFirst)
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(submissions, [][]byte{first, second}) {
+		t.Fatalf("submissions = %q, want %q then %q", submissions, first, second)
+	}
+	if maxActive != 1 {
+		t.Fatalf("maximum concurrent Submissions = %d, want 1", maxActive)
+	}
+}
+
+func TestPipelineRetainsRejectedSnapshotAndLaterSubmitsDistinctVersion(t *testing.T) {
+	baseline := []byte("baseline")
+	rejected := []byte("rejected version")
+	accepted := []byte("accepted later version")
+	var mu sync.Mutex
+	var submissions [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(baseline)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		submissions = append(submissions, body)
+		attempt := len(submissions)
+		mu.Unlock()
+		if attempt == 1 {
+			http.Error(w, "reject", http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	launcher := &recordingLauncher{opened: make(chan struct{})}
+	var statusMu sync.Mutex
+	var statuses []agent.Status
+	done := make(chan error, 1)
+	go func() {
+		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
+			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
+			DownloadURL: server.URL, UploadURL: server.URL,
+		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 10 * time.Millisecond, StabilityDuration: 30 * time.Millisecond}, func(status agent.Status) {
+			statusMu.Lock()
+			statuses = append(statuses, status)
+			statusMu.Unlock()
+		})
+		done <- err
+	}()
+	<-launcher.opened
+	if err := os.WriteFile(launcher.path, rejected, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var failedSnapshot string
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		statusMu.Lock()
+		for _, status := range statuses {
+			if status.Stage == "rejected" {
+				failedSnapshot = status.SnapshotPath
+			}
+		}
+		statusMu.Unlock()
+		if failedSnapshot != "" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if failedSnapshot == "" {
+		t.Fatal("HTTP rejection status with Snapshot path was not emitted")
+	}
+	got, err := os.ReadFile(failedSnapshot)
+	if err != nil {
+		t.Fatalf("read retained failed Snapshot: %v", err)
+	}
+	if !reflect.DeepEqual(got, rejected) {
+		t.Fatalf("failed Snapshot = %q, want %q", got, rejected)
+	}
+
+	// Persisting the same rejected bytes again must not duplicate the failed attempt.
+	if err := os.WriteFile(launcher.path, rejected, 0600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	mu.Lock()
+	attemptsAfterRepeat := len(submissions)
+	mu.Unlock()
+	if attemptsAfterRepeat != 1 {
+		t.Fatalf("identical rejected content produced %d attempts, want 1", attemptsAfterRepeat)
+	}
+	if err := os.WriteFile(launcher.path, accepted, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(submissions, [][]byte{rejected, accepted}) {
+		t.Fatalf("submissions = %q, want rejected then accepted", submissions)
+	}
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	var lifecycle []string
+	for _, status := range statuses {
+		switch status.Stage {
+		case "persisted", "snapshot", "submitting", "rejected", "succeeded":
+			lifecycle = append(lifecycle, status.Stage)
+		}
+	}
+	want := []string{"persisted", "snapshot", "submitting", "rejected", "persisted", "snapshot", "submitting", "succeeded"}
+	if !reflect.DeepEqual(lifecycle, want) {
+		t.Fatalf("Submission lifecycle = %v, want %v", lifecycle, want)
+	}
+}
+
 func TestPipelineSubmitsOneStableChangedAtomicReplacement(t *testing.T) {
 	baseline := []byte("baseline")
 	changed := []byte("complete changed document")
