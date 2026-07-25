@@ -1,0 +1,8 @@
+﻿{
+  "name": "软航跨浏览器插件",
+  "version": "2.0",
+  "description": "软航跨浏览器插件",
+  "manifest_version":2,
+  "plugins":[{"path":"npffax.dll","public":true}],
+  "update_url":"http://www.ntko.com/UpdateCrossBrowserPlugin.xml"
+}
