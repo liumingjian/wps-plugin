@@ -1,0 +1,7 @@
+{
+  "name": "com.liumingjian.wps_edit_agent",
+  "description": "Local WPS Editing control-message agent",
+  "path": "/ABSOLUTE/PATH/TO/wps-plugin/native-host/run-host.sh",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://REPLACE_WITH_ID_FROM_CHROME_EXTENSIONS/"]
+}

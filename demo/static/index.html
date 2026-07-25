@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local WPS Editing Demo</title>
+  <style>
+    body { font: 16px system-ui; max-width: 44rem; margin: 4rem auto; padding: 0 1rem; color: #17202a; }
+    .document { border: 1px solid #ccd1d1; border-radius: .6rem; padding: 1.5rem; }
+    .edit-entry { appearance: none; border: 0; border-radius: .4rem; padding: .7rem 1rem; margin-left: 1rem; background: #145a32; color: white; font-weight: 700; cursor: pointer; }
+    [data-state="connected"] { color: #1f618d; } [data-state="accepted"] { color: #196f3d; } [data-state="failed"] { color: #922b21; }
+  </style>
+</head>
+<body>
+  <h1>Document editing route</h1>
+  <article class="document">
+    <h2>Demo Document</h2>
+    <a href="/documents/doc-001.docx">Document Link</a>
+    <button class="edit-entry" data-document-id="doc-001" type="button">Edit locally in WPS</button>
+    <p id="task-status" role="status" aria-live="polite">Ready to create an Editing Task.</p>
+  </article>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Local WPS Editing Demo",
+  "version": "0.1.0",
+  "description": "Relays versioned Editing Task control messages to the local agent.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA39Dvmf+FJZNsMSMRc7Fqx/4Rua4wsPmkhEsynQ9uy+b8JQfN10ZjGfeY+Q0oJ4p8qY5FPvnVYICJCCuOtWgsSA7zQzoFGzVLIOj8RfXsIpblEWnX1gzndYlQ3ZPNB3YmMCLQZGpPmoJNPC+1Sw77fYIcADR+wWY6C3MSj8HuqAzc0tQRbz9VaHhluc3zCkRV9hO19h0SoJm12Q4sK6q47YRweNMzXsHBBWPJtt8JMqSOGwzAWXG8hwDVb66Zusy7chf6uGk4Ey4O5CL0FS4cLmRKO0RaAV1v2fcauVdx/WYNJf6ctcADohDke4VbM0F+9TgeuRhS/PcG7stQukthYwIDAQAB",
+  "host_permissions": [
+    "http://127.0.0.1:4317/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:4317/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}
