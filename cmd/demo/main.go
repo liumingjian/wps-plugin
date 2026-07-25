@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/fs"
 	"log"
 	"net/http"
 
@@ -9,10 +8,5 @@ import (
 )
 
 func main() {
-	assets, err := fs.Sub(demo.Static, "static")
-	if err != nil {
-		log.Fatal(err)
-	}
-	http.Handle("/", http.FileServer(http.FS(assets)))
-	log.Fatal(http.ListenAndServe("127.0.0.1:4317", nil))
+	log.Fatal(http.ListenAndServe("127.0.0.1:4317", demo.Handler()))
 }
