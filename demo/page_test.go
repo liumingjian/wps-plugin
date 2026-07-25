@@ -30,7 +30,7 @@ func TestDemoPageExposesDistinctEditEntryAndStateRegion(t *testing.T) {
 	defer response.Body.Close()
 	body, _ := io.ReadAll(response.Body)
 	page := string(body)
-	for _, required := range []string{`data-document-id="doc-001"`, `class="edit-entry"`, `Document Link`, `role="status"`, `app.js`} {
+	for _, required := range []string{`data-document-id="doc-001"`, `class="edit-entry"`, `Document Link`, `role="status"`, `app.js`, `Latest submitted result`} {
 		if !strings.Contains(page, required) {
 			t.Errorf("page missing %q", required)
 		}

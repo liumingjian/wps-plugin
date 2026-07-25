@@ -3,8 +3,10 @@ package demo
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"io/fs"
 	"net/http"
+	"sync"
 )
 
 const docxContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -15,6 +17,8 @@ func Handler() http.Handler {
 		panic(err)
 	}
 	mux := http.NewServeMux()
+	var mu sync.RWMutex
+	var latest []byte
 	mux.HandleFunc("GET /documents/{id}/content", func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("id") != "doc-001" {
 			http.Error(w, "Unknown Document ID.", http.StatusNotFound)
@@ -23,6 +27,37 @@ func Handler() http.Handler {
 		w.Header().Set("Content-Type", docxContentType)
 		w.Header().Set("Content-Disposition", `attachment; filename="doc-001.docx"`)
 		_, _ = w.Write(fixtureDOCX())
+	})
+	mux.HandleFunc("POST /tasks/{id}/submissions", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("id") != "task-doc-001" {
+			http.Error(w, "Unknown Editing Task ID.", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Content-Type") != docxContentType {
+			http.Error(w, "Submission must use the DOCX content type.", http.StatusUnsupportedMediaType)
+			return
+		}
+		content, err := io.ReadAll(r.Body)
+		if err != nil || len(content) == 0 {
+			http.Error(w, "Submission body is invalid.", http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		latest = append([]byte(nil), content...)
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	})
+	mux.HandleFunc("GET /submissions/latest", func(w http.ResponseWriter, r *http.Request) {
+		mu.RLock()
+		content := append([]byte(nil), latest...)
+		mu.RUnlock()
+		if content == nil {
+			http.Error(w, "No successful Submission exists.", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", docxContentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="latest-submission.docx"`)
+		_, _ = w.Write(content)
 	})
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	return mux

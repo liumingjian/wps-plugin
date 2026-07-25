@@ -82,7 +82,7 @@ func handle(r io.Reader) message {
 		}
 		workRoot := filepath.Join(os.TempDir(), "wps-edit-agent")
 		var latest agent.Status
-		result, err := agent.RunTask(context.Background(), agent.TaskStart{Version: request.Version, TaskID: request.TaskID, DocumentID: request.DocumentID, DownloadURL: request.DownloadURL, UploadURL: request.UploadURL}, workRoot, agent.LaunchServicesLauncher{}, func(status agent.Status) { latest = status })
+		result, err := agent.RunSubmissionPipeline(context.Background(), agent.TaskStart{Version: request.Version, TaskID: request.TaskID, DocumentID: request.DocumentID, DownloadURL: request.DownloadURL, UploadURL: request.UploadURL}, workRoot, agent.LaunchServicesLauncher{}, agent.PipelineOptions{}, func(status agent.Status) { latest = status })
 		if err != nil {
 			response := failure("task_failed", latest.Message)
 			response.TaskID, response.DocumentID, response.Stage = request.TaskID, request.DocumentID, latest.Stage
