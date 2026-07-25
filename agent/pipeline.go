@@ -107,6 +107,10 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 
 	ticker := time.NewTicker(options.PollInterval)
 	defer ticker.Stop()
+	fail := func(err error) (Result, error) {
+		emit(Status{TaskID: task.TaskID, DocumentID: task.DocumentID, Stage: "failed", Status: "failed", Kind: "submission", Message: err.Error()})
+		return result, err
+	}
 	var candidateSize int64
 	var candidateModTime time.Time
 	var stableSince time.Time
@@ -121,7 +125,7 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 					stableSince = time.Time{}
 					continue
 				}
-				return result, statErr
+				return fail(statErr)
 			}
 			if stableSince.IsZero() || candidateSize != info.Size() || !candidateModTime.Equal(info.ModTime()) {
 				candidateSize, candidateModTime, stableSince = info.Size(), info.ModTime(), now
@@ -143,34 +147,31 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 			emit(Status{TaskID: task.TaskID, DocumentID: task.DocumentID, Stage: "stable-version", Status: "completed", Kind: "persisted-version", Message: "Stable Persisted Version identified."})
 			snapshotDir := filepath.Join(filepath.Dir(result.WorkCopyPath), "snapshots")
 			if err := os.MkdirAll(snapshotDir, 0700); err != nil {
-				return result, err
+				return fail(err)
 			}
 			snapshotPath := filepath.Join(snapshotDir, fmt.Sprintf("%d-%s.docx", time.Now().UnixNano(), hash))
 			if err := os.WriteFile(snapshotPath, content, 0400); err != nil {
-				return result, err
+				return fail(err)
 			}
 			emit(Status{TaskID: task.TaskID, DocumentID: task.DocumentID, Stage: "submitting", Status: "started", Kind: "submission", Message: "Submitting immutable Snapshot."})
 			snapshot, err := os.Open(snapshotPath)
 			if err != nil {
-				return result, err
+				return fail(err)
 			}
 			request, err := http.NewRequestWithContext(ctx, http.MethodPost, task.UploadURL, snapshot)
 			if err != nil {
 				snapshot.Close()
-				return result, err
+				return fail(err)
 			}
 			request.Header.Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 			response, err := http.DefaultClient.Do(request)
 			snapshot.Close()
 			if err != nil {
-				emit(Status{TaskID: task.TaskID, DocumentID: task.DocumentID, Stage: "failed", Status: "failed", Kind: "submission", Message: err.Error()})
-				return result, err
+				return fail(err)
 			}
 			response.Body.Close()
 			if response.StatusCode < 200 || response.StatusCode >= 300 {
-				err := fmt.Errorf("submission returned HTTP %d", response.StatusCode)
-				emit(Status{TaskID: task.TaskID, DocumentID: task.DocumentID, Stage: "failed", Status: "failed", Kind: "submission", Message: err.Error()})
-				return result, err
+				return fail(fmt.Errorf("submission returned HTTP %d", response.StatusCode))
 			}
 			emit(Status{TaskID: task.TaskID, DocumentID: task.DocumentID, Stage: "succeeded", Status: "completed", Kind: "submission", Message: "Demo service accepted the Submission."})
 			return result, nil

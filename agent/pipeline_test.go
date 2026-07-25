@@ -83,6 +83,42 @@ func TestEditingTaskDownloadsWorkCopyRecordsBaselineAndLaunches(t *testing.T) {
 	}
 }
 
+func TestPipelineReportsFailureWhenSnapshotCreationFails(t *testing.T) {
+	launcher := &recordingLauncher{opened: make(chan struct{})}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("baseline"))
+	}))
+	defer server.Close()
+
+	var statuses []agent.Status
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
+			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
+			DownloadURL: server.URL, UploadURL: server.URL,
+		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 10 * time.Millisecond, StabilityDuration: 10 * time.Millisecond}, func(status agent.Status) {
+			statuses = append(statuses, status)
+		})
+		done <- err
+	}()
+	<-launcher.opened
+	if err := os.WriteFile(filepath.Join(filepath.Dir(launcher.path), "snapshots"), []byte("not a directory"), 0400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(launcher.path, []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-done; err == nil {
+		t.Fatal("pipeline error = nil, want snapshot creation error")
+	}
+	if statuses[len(statuses)-1].Stage != "failed" {
+		t.Fatalf("last stage = %q, want failed", statuses[len(statuses)-1].Stage)
+	}
+}
+
 func TestPipelineSubmitsOneStableChangedAtomicReplacement(t *testing.T) {
 	baseline := []byte("baseline")
 	changed := []byte("complete changed document")
