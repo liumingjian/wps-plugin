@@ -62,6 +62,9 @@ func handle(r io.Reader) message {
 		response.TaskID, response.DocumentID = request.TaskID, request.DocumentID
 		return response
 	}
+	if request.Type == "task-probe" && (request.TaskID == "" || request.DocumentID == "") {
+		return failure("invalid_task", "A task probe requires both an Editing Task ID and a Document ID.")
+	}
 	responseType := "pong"
 	if request.Type == "task-probe" {
 		responseType = "task-accepted"

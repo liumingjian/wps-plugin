@@ -63,6 +63,7 @@ func TestInvalidInputsReturnStructuredErrors(t *testing.T) {
 		{"invalid frame length", []byte{0xff, 0xff, 0xff, 0x7f}, "invalid_frame_length"},
 		{"malformed JSON", frame(`{"version":`), "malformed_json"},
 		{"unsupported version", frame(`{"version":2,"type":"ping","taskId":"task-1","documentId":"doc-1"}`), "unsupported_version"},
+		{"task probe without identifiers", frame(`{"version":1,"type":"task-probe"}`), "invalid_task"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
