@@ -197,8 +197,11 @@ func TestPipelineRetainsRejectedSnapshotAndLaterSubmitsDistinctVersion(t *testin
 	baseline := []byte("baseline")
 	rejected := []byte("rejected version")
 	accepted := []byte("accepted later version")
+	final := []byte("final distinct version")
 	var mu sync.Mutex
 	var submissions [][]byte
+	secondStarted := make(chan struct{})
+	releaseSecond := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			_, _ = w.Write(baseline)
@@ -212,6 +215,10 @@ func TestPipelineRetainsRejectedSnapshotAndLaterSubmitsDistinctVersion(t *testin
 		if attempt == 1 {
 			http.Error(w, "reject", http.StatusConflict)
 			return
+		}
+		if attempt == 2 {
+			close(secondStarted)
+			<-releaseSecond
 		}
 		w.WriteHeader(http.StatusCreated)
 	}))
@@ -279,14 +286,22 @@ func TestPipelineRetainsRejectedSnapshotAndLaterSubmitsDistinctVersion(t *testin
 	if err := os.WriteFile(launcher.path, accepted, 0600); err != nil {
 		t.Fatal(err)
 	}
+	<-secondStarted
+	if err := os.WriteFile(launcher.path, rejected, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(launcher.path, final, 0600); err != nil {
+		t.Fatal(err)
+	}
+	close(releaseSecond)
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	if !reflect.DeepEqual(submissions, [][]byte{rejected, accepted}) {
-		t.Fatalf("submissions = %q, want rejected then accepted", submissions)
+	if !reflect.DeepEqual(submissions, [][]byte{rejected, accepted, final}) {
+		t.Fatalf("submissions = %q, want %q", submissions, [][]byte{rejected, accepted, final})
 	}
 	statusMu.Lock()
 	defer statusMu.Unlock()
@@ -297,7 +312,7 @@ func TestPipelineRetainsRejectedSnapshotAndLaterSubmitsDistinctVersion(t *testin
 			lifecycle = append(lifecycle, status.Stage)
 		}
 	}
-	want := []string{"persisted", "snapshot", "submitting", "rejected", "persisted", "snapshot", "submitting", "succeeded"}
+	want := []string{"persisted", "snapshot", "submitting", "rejected", "persisted", "snapshot", "submitting", "succeeded", "persisted", "snapshot", "submitting", "succeeded"}
 	if !reflect.DeepEqual(lifecycle, want) {
 		t.Fatalf("Submission lifecycle = %v, want %v", lifecycle, want)
 	}

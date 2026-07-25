@@ -119,7 +119,7 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 	var candidateModTime time.Time
 	var stableSince time.Time
 	var successfulHash string
-	var attemptedHash string
+	attemptedHashes := make(map[string]struct{})
 	for {
 		select {
 		case <-ctx.Done():
@@ -146,11 +146,15 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 				continue
 			}
 			hash := fmt.Sprintf("%x", sha256.Sum256(content))
-			if hash == result.BaselineSHA256 || hash == successfulHash || hash == attemptedHash {
+			if hash == result.BaselineSHA256 || hash == successfulHash {
 				stableSince = time.Time{}
 				continue
 			}
-			attemptedHash = hash
+			if _, alreadyAttempted := attemptedHashes[hash]; alreadyAttempted {
+				stableSince = time.Time{}
+				continue
+			}
+			attemptedHashes[hash] = struct{}{}
 			status("stable-version", "completed", "persisted-version", "Stable Persisted Version identified.", "")
 			status("persisted", "completed", "persisted-version", "Local persistence produced a distinct stable content hash.", "")
 			snapshotDir := filepath.Join(filepath.Dir(result.WorkCopyPath), "snapshots")
