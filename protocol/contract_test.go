@@ -9,13 +9,16 @@ import (
 )
 
 type response struct {
-	Version    int    `json:"version"`
-	Type       string `json:"type"`
-	TaskID     string `json:"taskId"`
-	DocumentID string `json:"documentId"`
-	Status     string `json:"status"`
-	Code       string `json:"code"`
-	Message    string `json:"message"`
+	Version        int    `json:"version"`
+	Type           string `json:"type"`
+	TaskID         string `json:"taskId"`
+	DocumentID     string `json:"documentId"`
+	Status         string `json:"status"`
+	Code           string `json:"code"`
+	Message        string `json:"message"`
+	Stage          string `json:"stage"`
+	WorkCopyPath   string `json:"workCopyPath"`
+	BaselineSHA256 string `json:"baselineSha256"`
 }
 
 func runHost(t *testing.T, input []byte) response {
@@ -50,6 +53,13 @@ func frame(payload string) []byte {
 func TestTaskProbeReturnsCorrelatedAcceptedResponse(t *testing.T) {
 	got := runHost(t, frame(`{"version":1,"type":"task-probe","taskId":"task-doc-001","documentId":"doc-001"}`))
 	if got.Version != 1 || got.Type != "task-accepted" || got.Status != "accepted" || got.TaskID != "task-doc-001" || got.DocumentID != "doc-001" {
+		t.Fatalf("unexpected response: %+v", got)
+	}
+}
+
+func TestTaskStartRequiresHTTPTransferContract(t *testing.T) {
+	got := runHost(t, frame(`{"version":1,"type":"task-start","taskId":"task-doc-001","documentId":"doc-001"}`))
+	if got.Status != "failed" || got.Code != "invalid_task" {
 		t.Fatalf("unexpected response: %+v", got)
 	}
 }

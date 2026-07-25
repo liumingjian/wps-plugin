@@ -9,9 +9,11 @@ document.querySelector('.edit-entry').addEventListener('click', (event) => {
   window.postMessage({
     source: 'wps-edit-demo',
     version: 1,
-    type: 'task-probe',
+    type: 'task-start',
     taskId,
-    documentId
+    documentId,
+    downloadUrl: `${window.location.origin}/documents/${documentId}/content`,
+    uploadUrl: `${window.location.origin}/tasks/${taskId}/submissions`
   }, window.location.origin);
 });
 
@@ -19,5 +21,6 @@ window.addEventListener('message', (event) => {
   if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== 'wps-edit-extension') return;
   const reply = event.data;
   status.dataset.state = reply.status === 'accepted' ? 'accepted' : 'failed';
-  status.textContent = `Editing Task ${reply.taskId || 'unknown'}: ${reply.message || 'The local agent returned no message.'}`;
+  const stage = reply.stage ? ` [${reply.stage}]` : '';
+  status.textContent = `Editing Task ${reply.taskId || 'unknown'}${stage}: ${reply.message || 'The local agent returned no message.'}`;
 });
