@@ -9,5 +9,5 @@ import (
 type LaunchServicesLauncher struct{}
 
 func (LaunchServicesLauncher) Open(ctx context.Context, path string) error {
-	return exec.CommandContext(ctx, "open", "-a", "WPS Office", path).Run()
+	return exec.CommandContext(ctx, "open", "-a", "wpsoffice", path).Run()
 }

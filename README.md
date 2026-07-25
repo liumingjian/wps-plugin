@@ -36,9 +36,9 @@ Do not remove or regenerate the `key` in `extension/manifest.json`: it preserves
 go run ./cmd/demo
 ```
 
-Open <http://127.0.0.1:4317/> in Qaxbrowser and activate **Edit locally in WPS**, not the ordinary Document Link. The page creates stable identifiers `task-doc-001` and `doc-001`, then sends protocol version 1 `{type: "task-start"}` metadata containing the Document content and Submission URLs. The local agent downloads the DOCX into `$TMPDIR/wps-edit-agent/task-doc-001/doc-001.docx`, records its SHA-256 baseline, and asks Launch Services to open that absolute path with WPS Office. The Demo status identifies the Editing Task and pipeline stage; download, Work Copy, and launch failures appear as `failed` with actionable details.
+Open <http://127.0.0.1:4317/> in Qaxbrowser and activate **Edit locally in WPS**, not the ordinary Document Link. The page creates stable identifiers `task-doc-001` and `doc-001`, then sends protocol version 1 `{type: "task-start"}` metadata containing the Document content and Submission URLs. The local agent downloads the DOCX into `$TMPDIR/wps-edit-agent/task-doc-001/doc-001.docx`, records its SHA-256 baseline, and asks Launch Services to open that absolute path with WPS (`wpsoffice`). The Demo status identifies the Editing Task and pipeline stage; download, Work Copy, and launch failures appear as `failed` with actionable details.
 
-Designated-Mac smoke check: with WPS Office installed, start the Demo, activate the Edit Entry, confirm a separate WPS Writer window opens `doc-001.docx`, and confirm the page reports Editing Task `task-doc-001` at the `observing` stage.
+Designated-Mac smoke check: with WPS (`wpsoffice`) installed, start the Demo, activate the Edit Entry, confirm a separate WPS Writer window opens `doc-001.docx`, and confirm the page reports Editing Task `task-doc-001` at the `observing` stage.
 
 Run the real framed boundary contract tests, including invalid length, malformed JSON, and unsupported version cases:
 
