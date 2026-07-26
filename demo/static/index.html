@@ -7,18 +7,23 @@
   <style>
     body { font: 16px system-ui; max-width: 44rem; margin: 4rem auto; padding: 0 1rem; color: #17202a; }
     .document { border: 1px solid #ccd1d1; border-radius: .6rem; padding: 1.5rem; }
-    .edit-entry { appearance: none; border: 0; border-radius: .4rem; padding: .7rem 1rem; margin-left: 1rem; background: #145a32; color: white; font-weight: 700; cursor: pointer; }
-    [data-state="launch"], [data-state="stable-version"], [data-state="submitting"] { color: #1f618d; } [data-state="succeeded"] { color: #196f3d; } [data-state="failed"] { color: #922b21; }
+    #document-preview { min-height: 8rem; padding: 1rem; background: #f7f9f9; white-space: pre-wrap; }
+    .edit-entry { appearance: none; border: 0; border-radius: .4rem; padding: .7rem 1rem; background: #145a32; color: white; font-weight: 700; cursor: pointer; }
+    .edit-entry:disabled { cursor: wait; opacity: .6; }
+    [data-state="editing"] { color: #1f618d; } [data-state="succeeded"] { color: #196f3d; } [data-state="failed"] { color: #922b21; }
   </style>
 </head>
 <body>
   <h1>Document editing route</h1>
   <article class="document">
-    <h2>Demo Document</h2>
-    <a href="/documents/doc-001/content">Document Link</a>
+    <h2 id="document-name">Demo Document</h2>
+    <p id="document-version">Loading current version…</p>
+    <section aria-labelledby="preview-heading">
+      <h3 id="preview-heading">Current document</h3>
+      <div id="document-preview">Loading document preview…</div>
+    </section>
     <button class="edit-entry" data-document-id="doc-001" type="button">Edit locally in WPS</button>
-    <p id="task-status" role="status" aria-live="polite">Ready to create an Editing Task.</p>
-    <a href="/submissions/latest">Latest submitted result</a>
+    <p id="task-status" role="status" aria-live="polite">Ready to edit the current document.</p>
   </article>
   <script src="app.js"></script>
 </body>

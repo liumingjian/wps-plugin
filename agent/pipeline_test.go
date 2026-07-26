@@ -20,14 +20,31 @@ import (
 type recordingLauncher struct {
 	path   string
 	opened chan struct{}
+	closed chan struct{}
 }
 
-func (l *recordingLauncher) Open(_ context.Context, path string) error {
+type recordingSession struct {
+	closed <-chan struct{}
+}
+
+func (session recordingSession) WaitClosed(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-session.closed:
+		return nil
+	}
+}
+
+func (l *recordingLauncher) Open(_ context.Context, path string) (agent.EditingSession, error) {
 	l.path = path
 	if l.opened != nil {
 		close(l.opened)
 	}
-	return nil
+	if l.closed == nil {
+		l.closed = make(chan struct{})
+	}
+	return recordingSession{closed: l.closed}, nil
 }
 
 func TestEditingTaskDownloadsWorkCopyRecordsBaselineAndLaunches(t *testing.T) {
@@ -80,6 +97,102 @@ func TestEditingTaskDownloadsWorkCopyRecordsBaselineAndLaunches(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotStages, wantStages) {
 		t.Fatalf("stages = %v, want %v", gotStages, wantStages)
+	}
+}
+
+func TestPipelineCompletesUnchangedWhenWorkCopyClosesWithoutSave(t *testing.T) {
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	var submissions int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			submissions++
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		_, _ = w.Write([]byte("baseline"))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan struct {
+		result agent.Result
+		err    error
+	}, 1)
+	go func() {
+		result, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
+			Version: 1, TaskID: "task-unchanged", DocumentID: "doc-001",
+			DownloadURL: server.URL, UploadURL: server.URL,
+		}, t.TempDir(), launcher, agent.PipelineOptions{
+			PollInterval: 5 * time.Millisecond, StabilityDuration: 10 * time.Millisecond, FinalDrainDuration: 20 * time.Millisecond,
+		}, func(agent.Status) {})
+		done <- struct {
+			result agent.Result
+			err    error
+		}{result, err}
+	}()
+	<-launcher.opened
+	close(launcher.closed)
+	completed := <-done
+	if completed.err != nil {
+		t.Fatal(completed.err)
+	}
+	if completed.result.Outcome != "unchanged" {
+		t.Fatalf("outcome = %q, want unchanged", completed.result.Outcome)
+	}
+	if submissions != 0 {
+		t.Fatalf("submissions = %d, want 0", submissions)
+	}
+}
+
+func TestPipelineSubmitsFinalSaveThatArrivesAfterClose(t *testing.T) {
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	submitted := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			submitted <- body
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		_, _ = w.Write([]byte("baseline"))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan struct {
+		result agent.Result
+		err    error
+	}, 1)
+	go func() {
+		result, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
+			Version: 1, TaskID: "task-final-save", DocumentID: "doc-001",
+			DownloadURL: server.URL, UploadURL: server.URL,
+		}, t.TempDir(), launcher, agent.PipelineOptions{
+			PollInterval: 5 * time.Millisecond, StabilityDuration: 10 * time.Millisecond, FinalDrainDuration: 40 * time.Millisecond,
+		}, func(agent.Status) {})
+		done <- struct {
+			result agent.Result
+			err    error
+		}{result, err}
+	}()
+	<-launcher.opened
+	close(launcher.closed)
+	time.Sleep(5 * time.Millisecond)
+	final := []byte("saved while closing")
+	if err := os.WriteFile(launcher.path, final, 0600); err != nil {
+		t.Fatal(err)
+	}
+	completed := <-done
+	if completed.err != nil {
+		t.Fatal(completed.err)
+	}
+	if completed.result.Outcome != "submitted" {
+		t.Fatalf("outcome = %q, want submitted", completed.result.Outcome)
+	}
+	if got := <-submitted; !reflect.DeepEqual(got, final) {
+		t.Fatalf("submitted = %q, want %q", got, final)
 	}
 }
 

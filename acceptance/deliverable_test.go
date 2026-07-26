@@ -20,7 +20,7 @@ func TestSetupAndUninstallDevelopmentDeliverable(t *testing.T) {
 		t.Fatal(err)
 	}
 	installRoot := filepath.Join(home, "demo-install")
-	runScript(t, repo, "scripts/setup-macos-arm64.sh", append(os.Environ(), "HOME="+home, "QAX_SUPPORT_DIR="+qaxSupport, "INSTALL_ROOT="+installRoot))
+	runScript(t, t.TempDir(), filepath.Join(repo, "scripts/setup-macos-arm64.sh"), append(os.Environ(), "HOME="+home, "QAX_SUPPORT_DIR="+qaxSupport, "INSTALL_ROOT="+installRoot))
 
 	binary := filepath.Join(installRoot, "native-host", "native-host")
 	opened, err := macho.Open(binary)
@@ -48,8 +48,18 @@ func TestSetupAndUninstallDevelopmentDeliverable(t *testing.T) {
 	if manifest.Path != filepath.Join(installRoot, "native-host", "run-host.sh") || len(manifest.AllowedOrigins) != 1 || manifest.AllowedOrigins[0] != wantOrigin {
 		t.Fatalf("installed manifest = path %q origins %q", manifest.Path, manifest.AllowedOrigins)
 	}
-	if _, err := os.Stat(filepath.Join(installRoot, "extension", "manifest.json")); err != nil {
+	manifestData, err := os.ReadFile(filepath.Join(installRoot, "extension", "manifest.json"))
+	if err != nil {
 		t.Fatalf("unpacked extension missing: %v", err)
+	}
+	var extensionManifest struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(manifestData, &extensionManifest); err != nil {
+		t.Fatal(err)
+	}
+	if !contains(extensionManifest.Permissions, "nativeMessaging") {
+		t.Fatalf("extension permissions = %q, want nativeMessaging", extensionManifest.Permissions)
 	}
 
 	unrelated := filepath.Join(qaxSupport, "NativeMessagingHosts", "unrelated.json")
@@ -77,12 +87,12 @@ func TestSetupAndUninstallDevelopmentDeliverable(t *testing.T) {
 func TestRunbookAndAcceptanceRecordCoverTheDesignatedMacBoundaries(t *testing.T) {
 	repo := repoRoot(t)
 	assertContains(t, filepath.Join(repo, "docs", "macos-feasibility-runbook.md"), []string{
-		"Prerequisites", "Startup order", "Expected page states", "Work Copy", "Snapshot", "Latest submitted result",
-		"Host failure", "Download failure", "Launch failure", "Stability failure", "Submission failure",
+		"Prerequisites", "Startup order", "Expected states", "Work Copy", "Snapshot", "Version 3", "current document",
+		"Host failure", "Download or launch failure", "Stability or Submission failure", "Preview does not update",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "macos-feasibility-result.md"), []string{
 		"Qaxbrowser 1.2.46005.7", "WPS for macOS 12.1.26035", extensionID, "task-doc-001", "SHA-256",
-		"Qaxbrowser Native Messaging", "WPS disk-write observation", "not proven", "Observed PoC result",
+		"Qaxbrowser Native Messaging", "WPS disk-write observation", "Accepted on the designated Mac", "Observed PoC result",
 		"Galaxy Kylin", "Linux ARM64", "customer-system integration", "production durability", "production deployment compatibility",
 	})
 }
@@ -105,6 +115,15 @@ func runScript(t *testing.T, dir, script string, env []string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s failed: %v\n%s", script, err, out)
 	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func assertContains(t *testing.T, path string, values []string) {

@@ -6,6 +6,19 @@ install_root=${INSTALL_ROOT:-"$HOME/Library/Application Support/WPSEditDemo"}
 qax_support=${QAX_SUPPORT_DIR:-"$HOME/Library/Application Support/Qaxbrowser"}
 extension_id=mbkblmlopgjhdlandbjhpemifinfllim
 manifest_dir="$qax_support/NativeMessagingHosts"
+go_binary=${GO_BINARY:-$(command -v go || true)}
+required_go_version=go1.23.2
+
+if [[ -z "$go_binary" || ! -x "$go_binary" ]]; then
+  printf 'Go %s is required but no Go executable was found.\n' "$required_go_version" >&2
+  exit 1
+fi
+go_version=$(GOENV=off GOTOOLCHAIN=local "$go_binary" env GOVERSION)
+if [[ "$go_version" != "$required_go_version" ]]; then
+  printf 'Go %s is required; %s reports %s.\n' "$required_go_version" "$go_binary" "$go_version" >&2
+  printf 'Install Go 1.23.2 or set GO_BINARY to its executable path.\n' >&2
+  exit 1
+fi
 
 if [[ $(uname -s) != Darwin || $(uname -m) != arm64 ]]; then
   printf 'This development setup requires macOS arm64.\n' >&2
@@ -22,7 +35,13 @@ rm -rf "$install_root/extension"
 cp -R "$repo/extension" "$install_root/extension"
 cp "$repo/native-host/run-host.sh" "$install_root/native-host/run-host.sh"
 chmod +x "$install_root/native-host/run-host.sh"
-GOOS=darwin GOARCH=arm64 go build -o "$install_root/native-host/native-host" "$repo/cmd/native-host"
+build_cache=$(mktemp -d "${TMPDIR:-/tmp}/wps-edit-demo-go-cache.XXXXXX")
+trap 'rm -rf "$build_cache"' EXIT
+(
+  cd "$repo"
+  GOENV=off GOTOOLCHAIN=local GOCACHE="$build_cache" GOOS=darwin GOARCH=arm64 \
+    "$go_binary" build -o "$install_root/native-host/native-host" ./cmd/native-host
+)
 
 python3 - "$repo/native-host/com.liumingjian.wps_edit_agent.json" "$manifest_dir/com.liumingjian.wps_edit_agent.json" "$install_root/native-host/run-host.sh" "$extension_id" <<'PY'
 import json, sys

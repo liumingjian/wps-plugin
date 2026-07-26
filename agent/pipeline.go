@@ -32,17 +32,25 @@ type Status struct {
 type Result struct {
 	WorkCopyPath   string
 	BaselineSHA256 string
+	FinalSHA256    string
+	Outcome        string
+	session        EditingSession
 }
 
 type PipelineOptions struct {
-	PollInterval      time.Duration
-	StabilityDuration time.Duration
+	PollInterval       time.Duration
+	StabilityDuration  time.Duration
+	FinalDrainDuration time.Duration
 }
 
-var defaultPipelineOptions = PipelineOptions{PollInterval: 500 * time.Millisecond, StabilityDuration: 2 * time.Second}
+var defaultPipelineOptions = PipelineOptions{PollInterval: 500 * time.Millisecond, StabilityDuration: 2 * time.Second, FinalDrainDuration: 2 * time.Second}
+
+type EditingSession interface {
+	WaitClosed(context.Context) error
+}
 
 type Launcher interface {
-	Open(context.Context, string) error
+	Open(context.Context, string) (EditingSession, error)
 }
 
 func RunTask(ctx context.Context, task TaskStart, workRoot string, launcher Launcher, emit func(Status)) (Result, error) {
@@ -85,13 +93,14 @@ func RunTask(ctx context.Context, task TaskStart, workRoot string, launcher Laun
 
 	baseline := fmt.Sprintf("%x", sha256.Sum256(content))
 	status("baseline", "completed", "Work Copy SHA-256 baseline recorded.")
-	if err := launcher.Open(ctx, workCopy); err != nil {
+	session, err := launcher.Open(ctx, workCopy)
+	if err != nil {
 		status("launch", "failed", err.Error())
 		return Result{}, err
 	}
 	status("launch", "completed", "WPS launch requested.")
 	status("observing", "started", "Observing the Work Copy.")
-	return Result{WorkCopyPath: workCopy, BaselineSHA256: baseline}, nil
+	return Result{WorkCopyPath: workCopy, BaselineSHA256: baseline, session: session}, nil
 }
 
 func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string, launcher Launcher, options PipelineOptions, emit func(Status)) (Result, error) {
@@ -100,6 +109,9 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 	}
 	if options.StabilityDuration <= 0 {
 		options.StabilityDuration = defaultPipelineOptions.StabilityDuration
+	}
+	if options.FinalDrainDuration <= 0 {
+		options.FinalDrainDuration = defaultPipelineOptions.FinalDrainDuration
 	}
 	result, err := RunTask(ctx, task, workRoot, launcher, emit)
 	if err != nil {
@@ -120,10 +132,22 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 	var stableSince time.Time
 	var successfulHash string
 	attemptedHashes := make(map[string]struct{})
+	sessionContext, stopSession := context.WithCancel(ctx)
+	defer stopSession()
+	closeResult := make(chan error, 1)
+	go func() { closeResult <- result.session.WaitClosed(sessionContext) }()
+	var closedAt time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return result, ctx.Err()
+		case closeErr := <-closeResult:
+			if closeErr != nil {
+				return terminalFailure(closeErr)
+			}
+			closedAt = time.Now()
+			closeResult = nil
+			status("draining", "started", "lifecycle", "WPS closed; checking for a final persisted change.", "")
 		case now := <-ticker.C:
 			info, statErr := os.Stat(result.WorkCopyPath)
 			if statErr != nil {
@@ -147,7 +171,19 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 			}
 			hash := fmt.Sprintf("%x", sha256.Sum256(content))
 			if hash == result.BaselineSHA256 || hash == successfulHash {
-				stableSince = time.Time{}
+				if !closedAt.IsZero() && now.Sub(closedAt) >= options.FinalDrainDuration {
+					result.FinalSHA256 = hash
+					if successfulHash != "" {
+						result.Outcome = "submitted"
+						return result, nil
+					}
+					result.Outcome = "unchanged"
+					status("closed", "completed", "lifecycle", "WPS closed without a persisted change; the current Document version is unchanged.", "")
+					return result, nil
+				}
+				if closedAt.IsZero() {
+					stableSince = time.Time{}
+				}
 				continue
 			}
 			if _, alreadyAttempted := attemptedHashes[hash]; alreadyAttempted {
@@ -195,6 +231,8 @@ func RunSubmissionPipeline(ctx context.Context, task TaskStart, workRoot string,
 				continue
 			}
 			successfulHash = hash
+			result.FinalSHA256 = hash
+			result.Outcome = "submitted"
 			status("succeeded", "completed", "submission", "Demo service accepted the Submission.", snapshotPath)
 			if !changedDuringSubmission {
 				return result, nil

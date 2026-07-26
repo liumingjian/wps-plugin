@@ -27,6 +27,9 @@ type message struct {
 	Stage          string `json:"stage,omitempty"`
 	WorkCopyPath   string `json:"workCopyPath,omitempty"`
 	BaselineSHA256 string `json:"baselineSha256,omitempty"`
+	FinalSHA256    string `json:"finalSha256,omitempty"`
+	Outcome        string `json:"outcome,omitempty"`
+	Changed        *bool  `json:"changed,omitempty"`
 }
 
 func writeFrame(w io.Writer, value message) error {
@@ -88,7 +91,14 @@ func handle(r io.Reader) message {
 			response.TaskID, response.DocumentID, response.Stage = request.TaskID, request.DocumentID, latest.Stage
 			return response
 		}
-		return message{Version: 1, Type: "task-started", TaskID: request.TaskID, DocumentID: request.DocumentID, Status: "accepted", Stage: latest.Stage, WorkCopyPath: result.WorkCopyPath, BaselineSHA256: result.BaselineSHA256, Message: latest.Message}
+		changed := result.Outcome == "submitted"
+		stage := "closed"
+		messageText := "WPS closed without a persisted change; the current Document version is unchanged."
+		if changed {
+			stage = "succeeded"
+			messageText = latest.Message
+		}
+		return message{Version: 1, Type: "task-completed", TaskID: request.TaskID, DocumentID: request.DocumentID, Status: "completed", Stage: stage, WorkCopyPath: result.WorkCopyPath, BaselineSHA256: result.BaselineSHA256, FinalSHA256: result.FinalSHA256, Outcome: result.Outcome, Changed: &changed, Message: messageText}
 	}
 	responseType := "pong"
 	if request.Type == "task-probe" {
