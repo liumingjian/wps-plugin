@@ -1,6 +1,26 @@
 # Editing Task work-copy development setup
 
-This slice sends task metadata through Native Messaging. DOCX content is transferred over HTTP, written to a task-specific Work Copy, baselined with SHA-256, and opened in WPS through macOS Launch Services.
+This slice sends task metadata through Native Messaging. DOCX content is transferred over HTTP, written to a task-specific Work Copy, baselined with SHA-256, and opened in WPS. The repository contains the accepted macOS feasibility path and a designated-machine Kylin V10 ARM64 development adaptation.
+
+## Kylin V10 ARM64 development adaptation
+
+Build with Go 1.23.2, then install the existing artifact without Go:
+
+```sh
+go test ./...
+bash ./scripts/build-kylin-arm64.sh
+bash ./scripts/setup-kylin-arm64.sh
+```
+
+Load the printed unpacked extension path in Qaxbrowser and follow
+[`docs/kylin-development-runbook.md`](docs/kylin-development-runbook.md). Remove
+only installed product assets while retaining Work Copies and Snapshots with:
+
+```sh
+bash ./scripts/uninstall-kylin.sh
+```
+
+The sections below retain the original macOS development setup.
 
 ## Build and register the Native Messaging Host
 

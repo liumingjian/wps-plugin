@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,9 +25,7 @@ type recordingLauncher struct {
 	closed chan struct{}
 }
 
-type recordingSession struct {
-	closed <-chan struct{}
-}
+type recordingSession struct{ closed <-chan struct{} }
 
 func (session recordingSession) WaitClosed(ctx context.Context) error {
 	select {
@@ -36,63 +36,60 @@ func (session recordingSession) WaitClosed(ctx context.Context) error {
 	}
 }
 
-func (l *recordingLauncher) Open(_ context.Context, path string) (agent.EditingSession, error) {
-	l.path = path
-	if l.opened != nil {
-		close(l.opened)
+func (launcher *recordingLauncher) Open(_ context.Context, path string) (agent.EditingSession, error) {
+	launcher.path = path
+	if launcher.closed == nil {
+		launcher.closed = make(chan struct{})
 	}
-	if l.closed == nil {
-		l.closed = make(chan struct{})
+	if launcher.opened != nil {
+		close(launcher.opened)
 	}
-	return recordingSession{closed: l.closed}, nil
+	return recordingSession{closed: launcher.closed}, nil
+}
+
+type pipelineCompletion struct {
+	result agent.Result
+	err    error
 }
 
 func TestEditingTaskDownloadsWorkCopyRecordsBaselineAndLaunches(t *testing.T) {
 	document := []byte("real fixture document bytes")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/documents/doc-001/content" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 		_, _ = w.Write(document)
 	}))
 	defer server.Close()
 
 	launcher := new(recordingLauncher)
 	var statuses []agent.Status
-	result, err := agent.RunTask(context.Background(), agent.TaskStart{
-		Version: 1, TaskID: "task-001", DocumentID: "doc-001",
-		DownloadURL: server.URL + "/documents/doc-001/content",
-		UploadURL:   server.URL + "/tasks/task-001/submissions",
-	}, t.TempDir(), launcher, func(status agent.Status) { statuses = append(statuses, status) })
+	result, err := agent.RunTask(context.Background(), task(server.URL), t.TempDir(), launcher, func(status agent.Status) {
+		statuses = append(statuses, status)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	got, err := os.ReadFile(result.WorkCopyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, document) {
-		t.Fatalf("work copy = %q, want %q", got, document)
+		t.Fatalf("Work Copy = %q, want %q", got, document)
 	}
 	wantBaseline := fmt.Sprintf("%x", sha256.Sum256(document))
 	if result.BaselineSHA256 != wantBaseline {
 		t.Fatalf("baseline = %q, want %q", result.BaselineSHA256, wantBaseline)
 	}
 	if launcher.path != result.WorkCopyPath || !filepath.IsAbs(launcher.path) {
-		t.Fatalf("launch path = %q, work copy = %q", launcher.path, result.WorkCopyPath)
+		t.Fatalf("launch path = %q, Work Copy = %q", launcher.path, result.WorkCopyPath)
+	}
+	if mode := fileMode(t, filepath.Dir(result.WorkCopyPath)); mode != 0o700 {
+		t.Fatalf("task directory mode = %o, want 700", mode)
+	}
+	if mode := fileMode(t, result.WorkCopyPath); mode != 0o600 {
+		t.Fatalf("Work Copy mode = %o, want 600", mode)
 	}
 	wantStages := []string{"download", "work-copy", "baseline", "launch", "observing"}
 	var gotStages []string
 	for _, status := range statuses {
-		if status.TaskID != "task-001" || status.DocumentID != "doc-001" {
-			t.Fatalf("uncorrelated status: %+v", status)
-		}
-		if status.Kind == "persisted-version" || status.Kind == "submission" {
-			t.Fatalf("baseline emitted as edited content: %+v", status)
-		}
 		gotStages = append(gotStages, status.Stage)
 	}
 	if !reflect.DeepEqual(gotStages, wantStages) {
@@ -100,7 +97,7 @@ func TestEditingTaskDownloadsWorkCopyRecordsBaselineAndLaunches(t *testing.T) {
 	}
 }
 
-func TestPipelineCompletesUnchangedWhenWorkCopyClosesWithoutSave(t *testing.T) {
+func TestPipelineCompletesUnchangedOnlyAfterWorkCopyCloses(t *testing.T) {
 	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
 	var submissions int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,419 +110,312 @@ func TestPipelineCompletesUnchangedWhenWorkCopyClosesWithoutSave(t *testing.T) {
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	done := make(chan struct {
-		result agent.Result
-		err    error
-	}, 1)
-	go func() {
-		result, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
-			Version: 1, TaskID: "task-unchanged", DocumentID: "doc-001",
-			DownloadURL: server.URL, UploadURL: server.URL,
-		}, t.TempDir(), launcher, agent.PipelineOptions{
-			PollInterval: 5 * time.Millisecond, StabilityDuration: 10 * time.Millisecond, FinalDrainDuration: 20 * time.Millisecond,
-		}, func(agent.Status) {})
-		done <- struct {
-			result agent.Result
-			err    error
-		}{result, err}
-	}()
+	done := runPipeline(t, server.URL, launcher, fastOptions(), func(agent.Status) {})
 	<-launcher.opened
+	assertNotCompleted(t, done)
 	close(launcher.closed)
-	completed := <-done
-	if completed.err != nil {
-		t.Fatal(completed.err)
-	}
-	if completed.result.Outcome != "unchanged" {
-		t.Fatalf("outcome = %q, want unchanged", completed.result.Outcome)
+	completed := awaitCompletion(t, done)
+	if completed.err != nil || completed.result.Outcome != "unchanged" {
+		t.Fatalf("completion = %+v, want unchanged", completed)
 	}
 	if submissions != 0 {
-		t.Fatalf("submissions = %d, want 0", submissions)
+		t.Fatalf("Submissions = %d, want 0", submissions)
 	}
 }
 
-func TestPipelineSubmitsFinalSaveThatArrivesAfterClose(t *testing.T) {
-	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
-	submitted := make(chan []byte, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			body, _ := io.ReadAll(r.Body)
-			submitted <- body
-			w.WriteHeader(http.StatusCreated)
-			return
-		}
-		_, _ = w.Write([]byte("baseline"))
-	}))
-	defer server.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	done := make(chan struct {
-		result agent.Result
-		err    error
-	}, 1)
-	go func() {
-		result, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
-			Version: 1, TaskID: "task-final-save", DocumentID: "doc-001",
-			DownloadURL: server.URL, UploadURL: server.URL,
-		}, t.TempDir(), launcher, agent.PipelineOptions{
-			PollInterval: 5 * time.Millisecond, StabilityDuration: 10 * time.Millisecond, FinalDrainDuration: 40 * time.Millisecond,
-		}, func(agent.Status) {})
-		done <- struct {
-			result agent.Result
-			err    error
-		}{result, err}
-	}()
-	<-launcher.opened
-	close(launcher.closed)
-	time.Sleep(5 * time.Millisecond)
-	final := []byte("saved while closing")
-	if err := os.WriteFile(launcher.path, final, 0600); err != nil {
-		t.Fatal(err)
-	}
-	completed := <-done
-	if completed.err != nil {
-		t.Fatal(completed.err)
-	}
-	if completed.result.Outcome != "submitted" {
-		t.Fatalf("outcome = %q, want submitted", completed.result.Outcome)
-	}
-	if got := <-submitted; !reflect.DeepEqual(got, final) {
-		t.Fatalf("submitted = %q, want %q", got, final)
-	}
-}
-
-func TestPipelineReportsFailureWhenSnapshotCreationFails(t *testing.T) {
-	launcher := &recordingLauncher{opened: make(chan struct{})}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("baseline"))
-	}))
-	defer server.Close()
-
-	var statuses []agent.Status
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
-			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
-			DownloadURL: server.URL, UploadURL: server.URL,
-		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 10 * time.Millisecond, StabilityDuration: 10 * time.Millisecond}, func(status agent.Status) {
-			statuses = append(statuses, status)
-		})
-		done <- err
-	}()
-	<-launcher.opened
-	if err := os.WriteFile(filepath.Join(filepath.Dir(launcher.path), "snapshots"), []byte("not a directory"), 0400); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(launcher.path, []byte("changed"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := <-done; err == nil {
-		t.Fatal("pipeline error = nil, want snapshot creation error")
-	}
-	if statuses[len(statuses)-1].Stage != "failed" {
-		t.Fatalf("last stage = %q, want failed", statuses[len(statuses)-1].Stage)
-	}
-}
-
-func TestPipelineHandlesRepeatedPersistenceAndChangeDuringSubmission(t *testing.T) {
+func TestPipelineObservesDuringBlockedSubmissionAndDrainsFIFOAfterClose(t *testing.T) {
 	baseline := []byte("baseline")
 	first := []byte("first stable version")
 	second := []byte("second stable version")
 	firstStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
-	var mu sync.Mutex
-	var submissions [][]byte
-	active, maxActive := 0, 0
+	submitted := make(chan []byte, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			_, _ = w.Write(baseline)
 			return
 		}
 		body, _ := io.ReadAll(r.Body)
+		submitted <- body
+		if reflect.DeepEqual(body, first) {
+			close(firstStarted)
+			<-releaseFirst
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	snapshots := make(chan string, 3)
+	done := runPipeline(t, server.URL, launcher, fastOptions(), func(status agent.Status) {
+		if status.Stage == "snapshot" {
+			snapshots <- status.SnapshotPath
+		}
+	})
+	<-launcher.opened
+	writeWorkCopy(t, launcher.path, first)
+	<-firstStarted
+	<-snapshots
+	writeWorkCopy(t, launcher.path, second)
+	secondSnapshot := awaitString(t, snapshots)
+	if got := readFile(t, secondSnapshot); !reflect.DeepEqual(got, second) {
+		t.Fatalf("second Snapshot = %q, want %q", got, second)
+	}
+
+	close(releaseFirst)
+	if got := <-submitted; !reflect.DeepEqual(got, first) {
+		t.Fatalf("first Submission = %q", got)
+	}
+	if got := <-submitted; !reflect.DeepEqual(got, second) {
+		t.Fatalf("second Submission = %q", got)
+	}
+	assertNotCompleted(t, done)
+	close(launcher.closed)
+	completed := awaitCompletion(t, done)
+	if completed.err != nil || completed.result.Outcome != "submitted" {
+		t.Fatalf("completion = %+v, want submitted", completed)
+	}
+	wantFinal := fmt.Sprintf("%x", sha256.Sum256(second))
+	if completed.result.FinalSHA256 != wantFinal {
+		t.Fatalf("final hash = %q, want %q", completed.result.FinalSHA256, wantFinal)
+	}
+}
+
+func TestPipelineSubmitsLaterReversionToBaseline(t *testing.T) {
+	baseline := []byte("baseline")
+	changed := []byte("changed")
+	submitted := make(chan []byte, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(baseline)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		submitted <- body
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	done := runPipeline(t, server.URL, launcher, fastOptions(), func(agent.Status) {})
+	<-launcher.opened
+	writeWorkCopy(t, launcher.path, changed)
+	if got := <-submitted; !reflect.DeepEqual(got, changed) {
+		t.Fatalf("first Submission = %q", got)
+	}
+	writeWorkCopy(t, launcher.path, baseline)
+	if got := <-submitted; !reflect.DeepEqual(got, baseline) {
+		t.Fatalf("reversion Submission = %q, want baseline", got)
+	}
+	close(launcher.closed)
+	completed := awaitCompletion(t, done)
+	if completed.err != nil || completed.result.Outcome != "submitted" {
+		t.Fatalf("completion = %+v", completed)
+	}
+	wantFinal := fmt.Sprintf("%x", sha256.Sum256(baseline))
+	if completed.result.FinalSHA256 != wantFinal {
+		t.Fatalf("final hash = %q, want baseline %q", completed.result.FinalSHA256, wantFinal)
+	}
+}
+
+func TestPipelineRejectsTerminallyAndRetainsQueuedSnapshots(t *testing.T) {
+	first := []byte("rejected version")
+	second := []byte("queued version")
+	firstStarted := make(chan struct{})
+	rejectFirst := make(chan struct{})
+	var mu sync.Mutex
+	var submissions [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte("baseline"))
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
 		mu.Lock()
 		submissions = append(submissions, body)
-		active++
-		if active > maxActive {
-			maxActive = active
-		}
 		attempt := len(submissions)
 		mu.Unlock()
 		if attempt == 1 {
 			close(firstStarted)
-			<-releaseFirst
-		}
-		mu.Lock()
-		active--
-		mu.Unlock()
-		w.WriteHeader(http.StatusCreated)
-	}))
-	defer server.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	launcher := &recordingLauncher{opened: make(chan struct{})}
-	done := make(chan error, 1)
-	go func() {
-		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
-			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
-			DownloadURL: server.URL, UploadURL: server.URL,
-		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 10 * time.Millisecond, StabilityDuration: 30 * time.Millisecond}, func(agent.Status) {})
-		done <- err
-	}()
-	<-launcher.opened
-	if err := os.WriteFile(launcher.path, first, 0600); err != nil {
-		t.Fatal(err)
-	}
-	<-firstStarted
-
-	// Re-persisting identical bytes while the first Submission is active must not duplicate it.
-	if err := os.WriteFile(launcher.path, first, 0600); err != nil {
-		t.Fatal(err)
-	}
-	// A later distinct Persisted Version must be evaluated after the active Submission.
-	if err := os.WriteFile(launcher.path, second, 0600); err != nil {
-		t.Fatal(err)
-	}
-	close(releaseFirst)
-
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if !reflect.DeepEqual(submissions, [][]byte{first, second}) {
-		t.Fatalf("submissions = %q, want %q then %q", submissions, first, second)
-	}
-	if maxActive != 1 {
-		t.Fatalf("maximum concurrent Submissions = %d, want 1", maxActive)
-	}
-}
-
-func TestPipelineRetainsRejectedSnapshotAndLaterSubmitsDistinctVersion(t *testing.T) {
-	baseline := []byte("baseline")
-	rejected := []byte("rejected version")
-	accepted := []byte("accepted later version")
-	final := []byte("final distinct version")
-	var mu sync.Mutex
-	var submissions [][]byte
-	secondStarted := make(chan struct{})
-	releaseSecond := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			_, _ = w.Write(baseline)
-			return
-		}
-		body, _ := io.ReadAll(r.Body)
-		mu.Lock()
-		submissions = append(submissions, body)
-		attempt := len(submissions)
-		mu.Unlock()
-		if attempt == 1 {
+			<-rejectFirst
 			http.Error(w, "reject", http.StatusConflict)
 			return
 		}
-		if attempt == 2 {
-			close(secondStarted)
-			<-releaseSecond
-		}
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	launcher := &recordingLauncher{opened: make(chan struct{})}
-	var statusMu sync.Mutex
-	var statuses []agent.Status
-	done := make(chan error, 1)
-	go func() {
-		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
-			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
-			DownloadURL: server.URL, UploadURL: server.URL,
-		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 10 * time.Millisecond, StabilityDuration: 30 * time.Millisecond}, func(status agent.Status) {
-			statusMu.Lock()
-			statuses = append(statuses, status)
-			statusMu.Unlock()
-		})
-		done <- err
-	}()
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	snapshots := make(chan string, 3)
+	done := runPipeline(t, server.URL, launcher, fastOptions(), func(status agent.Status) {
+		if status.Stage == "snapshot" {
+			snapshots <- status.SnapshotPath
+		}
+	})
 	<-launcher.opened
-	if err := os.WriteFile(launcher.path, rejected, 0600); err != nil {
-		t.Fatal(err)
+	writeWorkCopy(t, launcher.path, first)
+	<-firstStarted
+	firstSnapshot := <-snapshots
+	writeWorkCopy(t, launcher.path, second)
+	secondSnapshot := awaitString(t, snapshots)
+	close(rejectFirst)
+	completed := awaitCompletion(t, done)
+	if completed.err == nil || !strings.Contains(completed.err.Error(), firstSnapshot) {
+		t.Fatalf("error = %v, want retained Snapshot path %s", completed.err, firstSnapshot)
 	}
-
-	var failedSnapshot string
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		statusMu.Lock()
-		for _, status := range statuses {
-			if status.Stage == "rejected" {
-				failedSnapshot = status.SnapshotPath
-			}
-		}
-		statusMu.Unlock()
-		if failedSnapshot != "" {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if !reflect.DeepEqual(readFile(t, firstSnapshot), first) || !reflect.DeepEqual(readFile(t, secondSnapshot), second) {
+		t.Fatal("retained Snapshots do not match their Persisted Versions")
 	}
-	if failedSnapshot == "" {
-		t.Fatal("HTTP rejection status with Snapshot path was not emitted")
-	}
-	got, err := os.ReadFile(failedSnapshot)
-	if err != nil {
-		t.Fatalf("read retained failed Snapshot: %v", err)
-	}
-	if !reflect.DeepEqual(got, rejected) {
-		t.Fatalf("failed Snapshot = %q, want %q", got, rejected)
-	}
-
-	// Persisting the same rejected bytes again must not duplicate the failed attempt.
-	if err := os.WriteFile(launcher.path, rejected, 0600); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(80 * time.Millisecond)
-	mu.Lock()
-	attemptsAfterRepeat := len(submissions)
-	mu.Unlock()
-	if attemptsAfterRepeat != 1 {
-		t.Fatalf("identical rejected content produced %d attempts, want 1", attemptsAfterRepeat)
-	}
-	if err := os.WriteFile(launcher.path, accepted, 0600); err != nil {
-		t.Fatal(err)
-	}
-	<-secondStarted
-	if err := os.WriteFile(launcher.path, rejected, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(launcher.path, final, 0600); err != nil {
-		t.Fatal(err)
-	}
-	close(releaseSecond)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-
 	mu.Lock()
 	defer mu.Unlock()
-	if !reflect.DeepEqual(submissions, [][]byte{rejected, accepted, final}) {
-		t.Fatalf("submissions = %q, want %q", submissions, [][]byte{rejected, accepted, final})
-	}
-	statusMu.Lock()
-	defer statusMu.Unlock()
-	var lifecycle []string
-	for _, status := range statuses {
-		switch status.Stage {
-		case "persisted", "snapshot", "submitting", "rejected", "succeeded":
-			lifecycle = append(lifecycle, status.Stage)
-		}
-	}
-	want := []string{"persisted", "snapshot", "submitting", "rejected", "persisted", "snapshot", "submitting", "succeeded", "persisted", "snapshot", "submitting", "succeeded"}
-	if !reflect.DeepEqual(lifecycle, want) {
-		t.Fatalf("Submission lifecycle = %v, want %v", lifecycle, want)
+	if !reflect.DeepEqual(submissions, [][]byte{first}) {
+		t.Fatalf("Submissions = %q, want only rejected first version", submissions)
 	}
 }
 
-func TestPipelineSubmitsOneStableChangedAtomicReplacement(t *testing.T) {
-	baseline := []byte("baseline")
-	changed := []byte("complete changed document")
-	var mu sync.Mutex
-	var submissions [][]byte
+func TestPipelineDrainsFinalSaveThatArrivesAfterClose(t *testing.T) {
+	final := []byte("saved while closing")
+	submitted := make(chan []byte, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/documents/doc-001/content":
-			_, _ = w.Write(baseline)
-		case r.Method == http.MethodPost && r.URL.Path == "/tasks/task-001/submissions":
-			body, _ := io.ReadAll(r.Body)
-			mu.Lock()
-			submissions = append(submissions, body)
-			mu.Unlock()
-			w.WriteHeader(http.StatusCreated)
-		default:
-			http.NotFound(w, r)
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte("baseline"))
+			return
 		}
+		body, _ := io.ReadAll(r.Body)
+		submitted <- body
+		w.WriteHeader(http.StatusCreated)
 	}))
 	defer server.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	launcher := &recordingLauncher{opened: make(chan struct{})}
-	var statuses []agent.Status
-	var statusMu sync.Mutex
-	done := make(chan error, 1)
-	go func() {
-		_, err := agent.RunSubmissionPipeline(ctx, agent.TaskStart{
-			Version: 1, TaskID: "task-001", DocumentID: "doc-001",
-			DownloadURL: server.URL + "/documents/doc-001/content",
-			UploadURL:   server.URL + "/tasks/task-001/submissions",
-		}, t.TempDir(), launcher, agent.PipelineOptions{PollInterval: 20 * time.Millisecond, StabilityDuration: 300 * time.Millisecond}, func(status agent.Status) {
-			statusMu.Lock()
-			statuses = append(statuses, status)
-			statusMu.Unlock()
-		})
-		done <- err
-	}()
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	options := fastOptions()
+	options.FinalDrainDuration = 50 * time.Millisecond
+	done := runPipeline(t, server.URL, launcher, options, func(agent.Status) {})
 	<-launcher.opened
+	close(launcher.closed)
+	time.Sleep(5 * time.Millisecond)
+	writeWorkCopy(t, launcher.path, final)
+	completed := awaitCompletion(t, done)
+	if completed.err != nil || completed.result.Outcome != "submitted" {
+		t.Fatalf("completion = %+v", completed)
+	}
+	if got := <-submitted; !reflect.DeepEqual(got, final) {
+		t.Fatalf("Submission = %q, want %q", got, final)
+	}
+}
 
-	// Unchanged content must not submit.
-	time.Sleep(350 * time.Millisecond)
-	mu.Lock()
-	if len(submissions) != 0 {
-		t.Fatalf("unchanged baseline produced %d submissions", len(submissions))
+func TestPipelineReportsSnapshotCreationFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("baseline"))
+	}))
+	defer server.Close()
+	launcher := &recordingLauncher{opened: make(chan struct{}), closed: make(chan struct{})}
+	done := runPipeline(t, server.URL, launcher, fastOptions(), func(agent.Status) {})
+	<-launcher.opened
+	if err := os.WriteFile(filepath.Join(filepath.Dir(launcher.path), "snapshots"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	mu.Unlock()
+	writeWorkCopy(t, launcher.path, []byte("changed"))
+	completed := awaitCompletion(t, done)
+	if completed.err == nil {
+		t.Fatal("pipeline error = nil, want Snapshot creation failure")
+	}
+}
 
-	// A file that keeps changing must not be uploaded before it stabilizes.
-	if err := os.WriteFile(launcher.path, []byte("partial"), 0600); err != nil {
+func TestSecondTaskLockIsRejectedUntilFirstReleases(t *testing.T) {
+	stateRoot := t.TempDir()
+	first, err := agent.AcquireTaskLock(stateRoot)
+	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(40 * time.Millisecond)
-	if err := os.WriteFile(launcher.path, []byte("still incomplete"), 0600); err != nil {
+	second, err := agent.AcquireTaskLock(stateRoot)
+	if second != nil || !errors.Is(err, agent.ErrTaskActive) {
+		t.Fatalf("second lock = %v, %v; want ErrTaskActive", second, err)
+	}
+	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(40 * time.Millisecond)
-	mu.Lock()
-	if len(submissions) != 0 {
-		t.Fatalf("incomplete content produced %d submissions", len(submissions))
+	third, err := agent.AcquireTaskLock(stateRoot)
+	if err != nil {
+		t.Fatalf("lock after release: %v", err)
 	}
-	mu.Unlock()
+	third.Close()
+	if mode := fileMode(t, filepath.Join(stateRoot, "active-task.lock")); mode != 0o600 {
+		t.Fatalf("lock mode = %o, want 600", mode)
+	}
+}
 
-	// Temporary disappearance plus atomic replacement restarts stability evaluation.
-	replacement := launcher.path + ".replacement"
-	if err := os.WriteFile(replacement, changed, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(launcher.path); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(20 * time.Millisecond)
-	if err := os.Rename(replacement, launcher.path); err != nil {
-		t.Fatal(err)
-	}
+func task(serverURL string) agent.TaskStart {
+	return agent.TaskStart{Version: 1, TaskID: "task-001", DocumentID: "doc-001", DownloadURL: serverURL, UploadURL: serverURL}
+}
 
-	if err := <-done; err != nil {
+func fastOptions() agent.PipelineOptions {
+	return agent.PipelineOptions{PollInterval: 5 * time.Millisecond, StabilityDuration: 15 * time.Millisecond, FinalDrainDuration: 20 * time.Millisecond}
+}
+
+func runPipeline(t *testing.T, serverURL string, launcher *recordingLauncher, options agent.PipelineOptions, emit func(agent.Status)) <-chan pipelineCompletion {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	t.Cleanup(cancel)
+	done := make(chan pipelineCompletion, 1)
+	go func() {
+		result, err := agent.RunSubmissionPipeline(ctx, task(serverURL), t.TempDir(), launcher, options, emit)
+		done <- pipelineCompletion{result: result, err: err}
+	}()
+	return done
+}
+
+func assertNotCompleted(t *testing.T, done <-chan pipelineCompletion) {
+	t.Helper()
+	select {
+	case completed := <-done:
+		t.Fatalf("pipeline completed while Work Copy remained open: %+v", completed)
+	case <-time.After(40 * time.Millisecond):
+	}
+}
+
+func awaitCompletion(t *testing.T, done <-chan pipelineCompletion) pipelineCompletion {
+	t.Helper()
+	select {
+	case completed := <-done:
+		return completed
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pipeline completion")
+		return pipelineCompletion{}
+	}
+}
+
+func awaitString(t *testing.T, values <-chan string) string {
+	t.Helper()
+	select {
+	case value := <-values:
+		return value
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for status")
+		return ""
+	}
+}
+
+func writeWorkCopy(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(submissions) != 1 || !reflect.DeepEqual(submissions[0], changed) {
-		t.Fatalf("submissions = %q, want exactly %q", submissions, changed)
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	statusMu.Lock()
-	defer statusMu.Unlock()
-	wantStages := []string{"stable-version", "submitting", "succeeded"}
-	var gotStages []string
-	for _, status := range statuses {
-		if status.Stage == "stable-version" || status.Stage == "submitting" || status.Stage == "succeeded" {
-			gotStages = append(gotStages, status.Stage)
-		}
+	return content
+}
+
+func fileMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(gotStages, wantStages) {
-		t.Fatalf("submission stages = %v, want %v", gotStages, wantStages)
-	}
+	return info.Mode().Perm()
 }

@@ -1,11 +1,13 @@
 package acceptance_test
 
 import (
+	"debug/elf"
 	"debug/macho"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -13,6 +15,9 @@ import (
 const extensionID = "mbkblmlopgjhdlandbjhpemifinfllim"
 
 func TestSetupAndUninstallDevelopmentDeliverable(t *testing.T) {
+	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
+		t.Skip("macOS arm64 development deliverable runs only on its designated platform")
+	}
 	repo := repoRoot(t)
 	home := t.TempDir()
 	qaxSupport := filepath.Join(home, "Library", "Application Support", "Qaxbrowser")
@@ -94,6 +99,110 @@ func TestRunbookAndAcceptanceRecordCoverTheDesignatedMacBoundaries(t *testing.T)
 		"Qaxbrowser 1.2.46005.7", "WPS for macOS 12.1.26035", extensionID, "task-doc-001", "SHA-256",
 		"Qaxbrowser Native Messaging", "WPS disk-write observation", "Accepted on the designated Mac", "Observed PoC result",
 		"Galaxy Kylin", "Linux ARM64", "customer-system integration", "production durability", "production deployment compatibility",
+	})
+}
+
+func TestKylinBuildSetupAndUninstallDevelopmentDeliverable(t *testing.T) {
+	repo := repoRoot(t)
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	dataHome := filepath.Join(root, "data")
+	configHome := filepath.Join(root, "config")
+	stateHome := filepath.Join(root, "state")
+	qaxConfig := filepath.Join(configHome, "qaxbrowser")
+	if err := os.MkdirAll(qaxConfig, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hostArtifact := filepath.Join(root, "artifacts", "native-host")
+	buildEnv := append(os.Environ(), "OUTPUT="+hostArtifact)
+	runScript(t, repo, filepath.Join(repo, "scripts", "build-kylin-arm64.sh"), buildEnv)
+
+	opened, err := elf.Open(hostArtifact)
+	if err != nil {
+		t.Fatalf("built host is not an ELF: %v", err)
+	}
+	if opened.Machine != elf.EM_AARCH64 {
+		t.Fatalf("built host machine = %v, want AArch64", opened.Machine)
+	}
+	opened.Close()
+
+	installRoot := filepath.Join(dataHome, "wps-edit-demo")
+	stateRoot := filepath.Join(stateHome, "wps-edit-demo")
+	setupEnv := []string{
+		"HOME=" + home,
+		"PATH=/usr/bin:/bin",
+		"XDG_DATA_HOME=" + dataHome,
+		"XDG_CONFIG_HOME=" + configHome,
+		"XDG_STATE_HOME=" + stateHome,
+		"HOST_BINARY=" + hostArtifact,
+	}
+	setup := filepath.Join(repo, "scripts", "setup-kylin-arm64.sh")
+	runScript(t, repo, setup, setupEnv)
+	runScript(t, repo, setup, setupEnv)
+
+	installedHost := filepath.Join(installRoot, "native-host", "native-host")
+	manifestPath := filepath.Join(qaxConfig, "NativeMessagingHosts", "com.liumingjian.wps_edit_agent.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Path           string   `json:"path"`
+		AllowedOrigins []string `json:"allowed_origins"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	wantOrigin := "chrome-extension://" + extensionID + "/"
+	if manifest.Path != installedHost || !contains(manifest.AllowedOrigins, wantOrigin) {
+		t.Fatalf("installed manifest = path %q origins %q", manifest.Path, manifest.AllowedOrigins)
+	}
+	for path, wantMode := range map[string]os.FileMode{
+		installRoot:                       0o700,
+		installedHost:                     0o700,
+		manifestPath:                      0o600,
+		stateRoot:                         0o700,
+		filepath.Join(stateRoot, "tasks"): 0o700,
+		filepath.Join(installRoot, "extension", "manifest.json"): 0o600,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != wantMode {
+			t.Fatalf("%s mode = %o, want %o", path, got, wantMode)
+		}
+	}
+
+	unrelated := filepath.Join(qaxConfig, "NativeMessagingHosts", "unrelated.json")
+	retained := filepath.Join(stateRoot, "tasks", "retained-snapshot.docx")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(retained, []byte("keep"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	runScript(t, repo, filepath.Join(repo, "scripts", "uninstall-kylin.sh"), setupEnv)
+	if _, err := os.Stat(installRoot); !os.IsNotExist(err) {
+		t.Fatalf("install root still exists: %v", err)
+	}
+	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
+		t.Fatalf("product manifest still exists: %v", err)
+	}
+	for _, path := range []string{unrelated, retained} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("uninstall removed retained path %s: %v", path, err)
+		}
+	}
+}
+
+func TestKylinRunbookCoversRealMachineAcceptanceBoundaries(t *testing.T) {
+	path := filepath.Join(repoRoot(t), "docs", "kylin-development-runbook.md")
+	assertContains(t, path, []string{
+		"Qaxbrowser `1.0.46371.2-1`", "WPS Office `12.1.2.26885.AK.preread.sw`", extensionID,
+		"ping", "pong", "Unchanged close", "Two ordered saves through close", "Version 3",
+		"final Work Copy", "Agent unavailable", "Concurrent Editing Task", "task_active",
+		"Submission failure and retained Snapshot", "0400", "Uninstall",
 	})
 }
 
