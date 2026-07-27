@@ -22,8 +22,13 @@ type response struct {
 }
 
 func runHost(t *testing.T, input []byte) response {
+	return runHostWithArgs(t, input)
+}
+
+func runHostWithArgs(t *testing.T, input []byte, args ...string) response {
 	t.Helper()
-	cmd := exec.Command("go", "run", "../cmd/native-host")
+	commandArgs := append([]string{"run", "../cmd/native-host"}, args...)
+	cmd := exec.Command("go", commandArgs...)
 	cmd.Stdin = bytes.NewReader(input)
 	output, err := cmd.Output()
 	if err != nil {
@@ -41,6 +46,13 @@ func runHost(t *testing.T, input []byte) response {
 		t.Fatal(err)
 	}
 	return got
+}
+
+func TestPingAcceptsBrowserOriginArgument(t *testing.T) {
+	got := runHostWithArgs(t, frame(`{"version":1,"type":"ping","taskId":"browser-ping"}`), "chrome-extension://mbkblmlopgjhdlandbjhpemifinfllim/")
+	if got.Version != 1 || got.Type != "pong" || got.Status != "accepted" || got.TaskID != "browser-ping" {
+		t.Fatalf("unexpected response: %+v", got)
+	}
 }
 
 func frame(payload string) []byte {

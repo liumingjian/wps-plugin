@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/liumingjian/wps-plugin/agent"
 )
@@ -129,15 +130,17 @@ func handle(r io.Reader) message {
 
 func main() {
 	if len(os.Args) > 1 {
-		if os.Args[1] != "manifest" {
+		if os.Args[1] == "manifest" {
+			if err := writeManifest(os.Stdout, os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(2)
+			}
+			return
+		}
+		if !strings.HasPrefix(os.Args[1], "chrome-extension://") {
 			fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
 			os.Exit(2)
 		}
-		if err := writeManifest(os.Stdout, os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-		return
 	}
 	if err := writeFrame(os.Stdout, handle(os.Stdin)); err != nil {
 		os.Exit(1)
