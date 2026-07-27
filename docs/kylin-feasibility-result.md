@@ -16,18 +16,18 @@ Date: 2026-07-27
 
 ## Verdict
 
-**Not yet accepted on the designated Kylin machine.** The browser, local
-agent, WPS lifecycle, ordered Snapshot pipeline, failure reporting, and
-user-level delivery boundaries passed. The required visible-marker check did
-not pass because the installed WPS 365 package was logged out and displayed
-`请登录后对文档进行编辑`; attempted text remained in the input-method pre-edit
-window and was not committed to the Document. Authentication or a licensed
-editing-capable WPS package is required and was not bypassed.
+**Accepted on the designated Kylin machine when WPS has a valid editing
+authorization.** The final run used an operator-authorized WPS account as the
+available test authorization. A customer's formally licensed offline WPS
+deployment satisfies the same prerequisite and does not need an online login.
 
-The ordered pipeline was still exercised with two distinct WPS-persisted DOCX
-structure changes. This proves ordering and final byte equality, but it is not
-substitute evidence for `KYLIN-ACCEPTANCE-FIRST` and
-`KYLIN-ACCEPTANCE-SECOND` appearing in the Document.
+The browser, local agent, WPS lifecycle, ordered Snapshot pipeline, visible
+marker persistence, failure reporting, and user-level delivery boundaries all
+passed. Task `edit-doc-001-fdc28aef-ba14-46c5-82a1-fa259264ad1e` persisted
+`KYLIN-ACCEPTANCE-FIRST` and `KYLIN-ACCEPTANCE-SECOND` as two ordered,
+distinct Snapshots, reached Version 3 after the WPS document closed, and
+retained final byte equality across the Work Copy, second Snapshot, and server
+content.
 
 ## Acceptance matrix
 
@@ -38,25 +38,27 @@ substitute evidence for `KYLIN-ACCEPTANCE-FIRST` and
 | Repeatable setup | Passed | Two setup runs printed the same extension, host, manifest, and state paths; the installed host hash equalled the build hash. |
 | Fixed-ID extension and Native Messaging | Passed after fix | Qaxbrowser loaded `/home/xiaohu/.local/share/wps-edit-demo/extension` as `mbkblmlopgjhdlandbjhpemifinfllim`; a correlated protocol-v1 ping returned `pong` with `status: accepted`. |
 | Unchanged close | Passed | Work Copy `edit-doc-001-c8bd6978-5659-4908-b6fb-7343a3e2eb8f/doc-001.docx` closed at Version 1 without a `snapshots` directory; the page reported that Version 1 remained current. |
-| Two ordered distinct saves through close | Partially passed | Task `edit-doc-001-216149da-714e-4bca-8e2b-72f67b89a620` created `000001` then `000002`, reached Version 3 only after WPS close, and retained the host while WPS remained open. The required visible markers were not committed because WPS required login. |
-| Final byte equality | Passed | Final Work Copy, `000002`, and `/documents/doc-001/content` all had SHA-256 `1ed75b33e263913de4be41c53ec713eea75a31cefb2a792b3e7d609657700e31`. |
+| Two ordered distinct saves through close | Passed | Authorized task `edit-doc-001-fdc28aef-ba14-46c5-82a1-fa259264ad1e` created `000001` containing the first marker, then `000002` containing both markers; after WPS close the page showed Version 3 and both markers. |
+| Final byte equality | Passed | Final Work Copy, `000002`, and `/documents/doc-001/content` all had SHA-256 `d25bddfefa83003b0ca5be332ea9f2976282e5355d497803625d4e9577d1737a`. |
 | Concurrent Editing Task | Passed | While an Editing Task held the process-wide lock, a second request failed with `another Editing Task is active` and created no task directory. |
 | Agent unavailable | Passed | With the product manifest moved aside and Qaxbrowser restarted, the page reported `Local agent unavailable: Specified native messaging host not found.` |
 | Submission failure retention | Passed | With the Demo stopped before persistence, the page reported the retained Snapshot path; Work Copy and mode-`0400` Snapshot both hashed to `565a9ac9b6a980c8defb37ef980c2c55d444c82c6b82aae5bbeafef37e01bce4`. |
 | Uninstall | Passed | The unpacked extension was removed, then `bash ./scripts/uninstall-kylin.sh` removed the install root and product manifest while retaining Work Copies and Snapshots below the state root. |
 
-## Ordered Submission evidence
+## Final ordered Submission evidence
 
-The successful ordering task used these immutable Snapshots:
+The authorized visible-marker task used these immutable Snapshots:
 
 | Sequence | Size | SHA-256 |
 | --- | ---: | --- |
-| `000001` | 9759 | `fadc23f84a85c9971b71c7bf498b772e0daae8d618c5da8034268081ff3df618` |
-| `000002` | 9823 | `1ed75b33e263913de4be41c53ec713eea75a31cefb2a792b3e7d609657700e31` |
+| `000001` | 9871 | `0cd32e7be59f490bd069ef25b8f8da2fea493487e7ec24c3c650856ecd28c403` |
+| `000002` | 9941 | `d25bddfefa83003b0ca5be332ea9f2976282e5355d497803625d4e9577d1737a` |
 
-The page reached Version 2 after the first Submission and Version 3 after the
-second. The Native Messaging host remained active until WPS closed, after
-which the page reported `Version 3 is current. You can edit it again in WPS.`
+The first Snapshot contains only `KYLIN-ACCEPTANCE-FIRST`; the second contains
+both required markers. The page reached Version 2 after the first Submission
+and Version 3 after the second. The Native Messaging host remained active
+until WPS closed, after which the page reported
+`Version 3 is current. You can edit it again in WPS.`
 
 ## Acceptance defect fixed
 
@@ -88,14 +90,13 @@ the host with Qaxbrowser's exact origin argument and requires a correlated
 - Retained failed-Submission Snapshot:
   `/home/xiaohu/.local/state/wps-edit-demo/tasks/edit-doc-001-13367c4c-30ec-4fe8-a164-e92b874342cf/snapshots/000001-565a9ac9b6a980c8defb37ef980c2c55d444c82c6b82aae5bbeafef37e01bce4.docx`
 
-## Remaining acceptance action
+## Deployment prerequisite
 
-Provide either an operator-authorized WPS 365 login or a formally licensed
-editing-capable ARM64 WPS package, rerun setup, and repeat the two-save task
-with `KYLIN-ACCEPTANCE-FIRST` and `KYLIN-ACCEPTANCE-SECOND`. Acceptance
-requires both markers in the WPS UI, server preview, and final DOCX, plus the
-already-proven ordered Snapshot and final-hash checks. No other boundary needs
-redesign based on this run.
+WPS must have a valid editing authorization before the Editing Task starts.
+The acceptance machine used an authorized online account because that was the
+available test mechanism. Customer environments with formal offline WPS
+authorization do not require an online login; the product depends on effective
+local editing capability, not on a specific authorization transport.
 
 ## Follow-up licensing diagnosis
 

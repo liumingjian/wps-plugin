@@ -209,10 +209,11 @@ func TestKylinRunbookCoversRealMachineAcceptanceBoundaries(t *testing.T) {
 func TestKylinAcceptanceRecordCoversObservedBoundaries(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "docs", "kylin-feasibility-result.md")
 	assertContains(t, path, []string{
-		"Not yet accepted on the designated Kylin machine", "Qaxbrowser `1.0.46371.2-1`",
+		"Accepted on the designated Kylin machine when WPS has a valid editing", "Qaxbrowser `1.0.46371.2-1`",
 		"WPS Office `12.1.2.26885.AK.preread.sw`", extensionID, "go test ./...",
 		"Unchanged close", "Concurrent Editing Task", "Agent unavailable", "Submission failure retention", "Uninstall",
-		"KYLIN-ACCEPTANCE-FIRST", "KYLIN-ACCEPTANCE-SECOND", "Final byte equality", "Scope disclaimer",
+		"KYLIN-ACCEPTANCE-FIRST", "KYLIN-ACCEPTANCE-SECOND", "Final byte equality", "formally licensed offline WPS",
+		"d25bddfefa83003b0ca5be332ea9f2976282e5355d497803625d4e9577d1737a", "Scope disclaimer",
 	})
 }
 
