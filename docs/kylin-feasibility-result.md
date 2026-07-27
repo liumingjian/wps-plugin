@@ -19,10 +19,10 @@ Date: 2026-07-27
 **Not yet accepted on the designated Kylin machine.** The browser, local
 agent, WPS lifecycle, ordered Snapshot pipeline, failure reporting, and
 user-level delivery boundaries passed. The required visible-marker check did
-not pass because this WPS session was logged out and displayed
+not pass because the installed WPS 365 package was logged out and displayed
 `请登录后对文档进行编辑`; attempted text remained in the input-method pre-edit
-window and was not committed to the Document. Authentication requires a human
-account choice and was not bypassed.
+window and was not committed to the Document. Authentication or a licensed
+editing-capable WPS package is required and was not bypassed.
 
 The ordered pipeline was still exercised with two distinct WPS-persisted DOCX
 structure changes. This proves ordering and final byte equality, but it is not
@@ -90,11 +90,27 @@ the host with Qaxbrowser's exact origin argument and requires a correlated
 
 ## Remaining acceptance action
 
-Authenticate WPS using an account authorized by the operator, rerun setup, and
-repeat the two-save task with `KYLIN-ACCEPTANCE-FIRST` and
-`KYLIN-ACCEPTANCE-SECOND`. Acceptance requires both markers in the WPS UI,
-server preview, and final DOCX, plus the already-proven ordered Snapshot and
-final-hash checks. No other boundary needs redesign based on this run.
+Provide either an operator-authorized WPS 365 login or a formally licensed
+editing-capable ARM64 WPS package, rerun setup, and repeat the two-save task
+with `KYLIN-ACCEPTANCE-FIRST` and `KYLIN-ACCEPTANCE-SECOND`. Acceptance
+requires both markers in the WPS UI, server preview, and final DOCX, plus the
+already-proven ordered Snapshot and final-hash checks. No other boundary needs
+redesign based on this run.
+
+## Follow-up licensing diagnosis
+
+A follow-up run reset the per-user WPS profile and briefly allowed an unsigned
+local edit. That result was not durable: a fresh browser-to-WPS Editing Task
+again displayed `请登录后对文档进行编辑` before either acceptance marker was
+written. The installed package metadata identifies the product as `WPS365`, so
+profile reset is not a valid removal of the product's authorization boundary.
+
+The Kylin repository's ARM64 alternative
+`12.1.2.1128.AK.preload.sw` was downloaded and run from an isolated extraction
+without replacing the system package. Its package metadata identifies the
+product as `Professional`; it accepted and persisted an offline DOCX edit, but
+the UI displayed `剩余30天试用`. It is therefore evidence that an editing-capable
+package solves the technical boundary, not a permanent unlicensed substitute.
 
 ## Scope disclaimer
 
