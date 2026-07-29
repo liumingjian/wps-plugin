@@ -58,26 +58,35 @@ function showNotification(outcome, message, callback = () => {}) {
   const success = outcome === 'success';
   chrome.notifications.create(`wps-edit-prototype-${Date.now()}`, {
     type: 'basic',
-    iconUrl: chrome.runtime.getURL('icon.svg'),
+    iconUrl: chrome.runtime.getURL('icon.png'),
     title: success ? 'Document submitted' : 'Document submission failed',
     message: message || (success
       ? 'The server accepted the saved Document version.'
       : 'The saved version was not accepted; recovery is required.'),
     priority: 2
-  }, callback);
+  }, (notificationId) => {
+    const error = chrome.runtime.lastError?.message;
+    callback(error ? failed('notification_failed', error) : null, notificationId);
+  });
 }
 
 function notificationProbe(request, sendResponse) {
-  const success = request.outcome === 'success';
   setTimeout(() => {
-    showNotification(request.outcome, '', () => sendResponse({
-      version: 1,
-      type: 'notification-shown',
-      status: success ? 'completed' : 'failed',
-      outcome: request.outcome,
-      message: `A fixed ${request.outcome} notification was issued after the three-second foregrounding delay.`,
-      extensionVersion: chrome.runtime.getManifest().version
-    }));
+    showNotification(request.outcome, '', (error, notificationId) => {
+      if (error) {
+        sendResponse(error);
+        return;
+      }
+      sendResponse({
+        version: 1,
+        type: 'notification-shown',
+        status: 'completed',
+        outcome: request.outcome,
+        notificationId,
+        message: `A fixed ${request.outcome} notification was issued after the three-second foregrounding delay.`,
+        extensionVersion: chrome.runtime.getManifest().version
+      });
+    });
   }, 3000);
 }
 

@@ -13,6 +13,17 @@ if [[ ! -f "$release_key" || ! -x "$qaxbrowser" ]]; then
   exit 1
 fi
 
+versions=("$@")
+if [[ ${#versions[@]} -eq 0 ]]; then
+  versions=(0.1.0 0.1.1 0.1.2)
+fi
+for version in "${versions[@]}"; do
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'Invalid extension version: %s\n' "$version" >&2
+    exit 1
+  fi
+done
+
 scratch=$(mktemp -d)
 decrypted_key="$scratch/release-key.pem"
 browser_profile="$scratch/qax-profile"
@@ -29,7 +40,7 @@ if [[ "$fingerprint" != "$expected_fingerprint" ]]; then
 fi
 
 mkdir -p "$output" "$browser_profile"
-for version in 0.1.0 0.1.1; do
+for version in "${versions[@]}"; do
   extension_dir="$scratch/extension-$version"
   artifact="$output/wps-edit-packaged-prototype-$version.crx"
   generated="$extension_dir.crx"
@@ -40,7 +51,7 @@ for version in 0.1.0 0.1.1; do
   mkdir "$extension_dir"
   cp "$prototype/extension/content.js" "$extension_dir/content.js"
   cp "$prototype/extension/service-worker.js" "$extension_dir/service-worker.js"
-  cp "$prototype/extension/icon.svg" "$extension_dir/icon.svg"
+  cp "$prototype/extension/icon.png" "$extension_dir/icon.png"
   jq --arg version "$version" '.version = $version' \
     "$prototype/extension/manifest.json" >"$extension_dir/manifest.json"
 
@@ -56,7 +67,7 @@ for version in 0.1.0 0.1.1; do
   fi
 done
 
-for version in 0.1.0 0.1.1; do
+for version in "${versions[@]}"; do
   mv "$scratch/extension-$version" "$output/extension-$version"
   mv "$scratch/extension-$version.crx" "$output/wps-edit-packaged-prototype-$version.crx"
   printf 'Built %s\n' "$output/wps-edit-packaged-prototype-$version.crx"
