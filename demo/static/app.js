@@ -28,7 +28,7 @@ editEntry.addEventListener('click', (event) => {
   status.textContent = 'Opening the current version in WPS. Save in WPS to update this page.';
 
   window.postMessage({
-    source: 'wps-edit-demo',
+    source: 'wps-edit-sdk-prototype',
     version: 1,
     type: 'task-start',
     taskId: activeTaskId,
@@ -39,7 +39,7 @@ editEntry.addEventListener('click', (event) => {
 });
 
 window.addEventListener('message', async (event) => {
-  if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== 'wps-edit-extension') return;
+  if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== 'wps-edit-extension-prototype') return;
   const reply = event.data;
   if (reply.taskId !== activeTaskId) return;
 
