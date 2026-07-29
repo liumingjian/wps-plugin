@@ -23,15 +23,22 @@ if [[ ! -d "$manifest_dir" ]]; then
   printf 'Qaxbrowser Native Messaging directory is unavailable: %s\n' "$manifest_dir" >&2
   exit 1
 fi
-if [[ -e "$install_root" ]]; then
+if [[ -e "$install_root" && ! -d "$install_root" ]]; then
+  printf 'Prototype is already installed: %s\n' "$install_root" >&2
+  exit 1
+fi
+if [[ -d "$install_root" && -n $(find "$install_root" -mindepth 1 -maxdepth 1 -print -quit) ]]; then
   printf 'Prototype is already installed: %s\n' "$install_root" >&2
   exit 1
 fi
 
 mkdir -p "$install_root"
 chmod 0700 "$install_root"
-GOENV=off GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 \
-  go build -o "$install_root/native-host" "$repo/cmd/native-host"
+(
+  cd "$repo"
+  GOENV=off GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 \
+    go build -o "$install_root/native-host" ./cmd/native-host
+)
 cp "$repo/prototypes/packaged-crx-messaging/native-host-wrapper.sh" "$install_root/native-host-wrapper.sh"
 chmod 0700 "$install_root/native-host" "$install_root/native-host-wrapper.sh"
 : >"$install_root/native-channel.jsonl"
