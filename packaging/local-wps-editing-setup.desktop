@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Local WPS Editing Setup
+Name[zh_CN]=本地 WPS 编辑设置
+Comment=Configure browser-initiated local WPS editing
+Comment[zh_CN]=配置浏览器发起的本地 WPS 编辑
+Exec=/usr/bin/local-wps-editing-setup
+Icon=local-wps-editing
+Terminal=false
+Categories=Office;Settings;

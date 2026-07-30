@@ -1,4 +1,21 @@
-# Editing Task work-copy development setup
+# Local WPS Editing
+
+The production delivery is a fixed-ID signed CRX and an ARM64 DEB for the designated Kylin V10 environment. Build unsigned staging and the DEB with:
+
+```sh
+OUTPUT=/tmp/local-wps-extension VERSION=1.0.0 bash ./scripts/stage-extension.sh
+MAINTAINER='Supplier Support <support@example.com>' bash ./scripts/build-deb-arm64.sh
+```
+
+The signed CRX build requires the supplier-held encrypted release key and designated Qaxbrowser:
+
+```sh
+CRX_RELEASE_KEY=/secure/crx-release.pem bash ./scripts/package-crx.sh
+```
+
+See [`docs/customer-installation.md`](docs/customer-installation.md) for customer installation, OA SDK usage, recovery, upgrades, and removal.
+
+## Development feasibility history
 
 This slice sends task metadata through Native Messaging. DOCX content is transferred over HTTP, written to a task-specific Work Copy, baselined with SHA-256, and opened in WPS. The repository contains the accepted macOS feasibility path and a designated-machine Kylin V10 ARM64 development adaptation.
 

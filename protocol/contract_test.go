@@ -9,16 +9,62 @@ import (
 )
 
 type response struct {
-	Version        int    `json:"version"`
-	Type           string `json:"type"`
-	TaskID         string `json:"taskId"`
-	DocumentID     string `json:"documentId"`
-	Status         string `json:"status"`
-	Code           string `json:"code"`
-	Message        string `json:"message"`
-	Stage          string `json:"stage"`
-	WorkCopyPath   string `json:"workCopyPath"`
-	BaselineSHA256 string `json:"baselineSha256"`
+	ProtocolVersion int    `json:"protocolVersion"`
+	AgentVersion    string `json:"agentVersion"`
+	Version         int    `json:"version"`
+	Type            string `json:"type"`
+	TaskID          string `json:"taskId"`
+	DocumentID      string `json:"documentId"`
+	Status          string `json:"status"`
+	Code            string `json:"code"`
+	Message         string `json:"message"`
+	Stage           string `json:"stage"`
+	WorkCopyPath    string `json:"workCopyPath"`
+	SnapshotPath    string `json:"snapshotPath"`
+	BaselineSHA256  string `json:"baselineSha256"`
+}
+
+func TestProductionProtocolKeepsChannelOpenAcrossFrames(t *testing.T) {
+	input := append(frame(`{"protocolVersion":2,"type":"get-readiness"}`), frame(`{"protocolVersion":2,"type":"get-readiness"}`)...)
+	frames := runHostFrames(t, input)
+	if len(frames) != 2 {
+		t.Fatalf("responses = %d, want 2", len(frames))
+	}
+	for _, got := range frames {
+		if got.ProtocolVersion != 2 || got.AgentVersion == "" || got.Type != "readiness" || got.Status != "completed" {
+			t.Fatalf("unexpected readiness: %+v", got)
+		}
+		if got.WorkCopyPath != "" || got.SnapshotPath != "" {
+			t.Fatalf("readiness leaked a local path: %+v", got)
+		}
+	}
+}
+
+func runHostFrames(t *testing.T, input []byte) []response {
+	t.Helper()
+	cmd := exec.Command("go", "run", "../cmd/native-host")
+	cmd.Stdin = bytes.NewReader(input)
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("host failed: %v", err)
+	}
+	var responses []response
+	for len(output) > 0 {
+		if len(output) < 4 {
+			t.Fatalf("truncated response frame: %q", output)
+		}
+		length := int(binary.LittleEndian.Uint32(output[:4]))
+		if length > len(output)-4 {
+			t.Fatalf("response length %d exceeds remaining %d", length, len(output)-4)
+		}
+		var got response
+		if err := json.Unmarshal(output[4:4+length], &got); err != nil {
+			t.Fatal(err)
+		}
+		responses = append(responses, got)
+		output = output[4+length:]
+	}
+	return responses
 }
 
 func runHost(t *testing.T, input []byte) response {

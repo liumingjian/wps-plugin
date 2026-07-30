@@ -28,6 +28,18 @@ func DefaultStateRoot() (string, error) {
 	return filepath.Join(stateHome, "wps-edit-demo"), nil
 }
 
+func ProductionStateRoot() (string, error) {
+	stateHome := os.Getenv("XDG_STATE_HOME")
+	if stateHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		stateHome = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(stateHome, "local-wps-editing"), nil
+}
+
 func AcquireTaskLock(stateRoot string) (*TaskLock, error) {
 	if err := os.MkdirAll(stateRoot, 0o700); err == nil {
 		err = os.Chmod(stateRoot, 0o700)

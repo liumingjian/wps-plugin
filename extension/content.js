@@ -1,10 +1,27 @@
-window.addEventListener('message', (event) => {
+const PAGE_SOURCE = 'local-wps-editing-sdk';
+const EXTENSION_SOURCE = 'local-wps-editing-extension';
+let port;
+
+function extensionPort() {
+  if (port) return port;
+  port = chrome.runtime.connect({ name: 'page-sdk' });
+  port.onMessage.addListener(message => {
+    window.postMessage({ source: EXTENSION_SOURCE, ...message }, window.location.origin);
+  });
+  port.onDisconnect.addListener(() => { port = undefined; });
+  return port;
+}
+
+window.addEventListener('message', event => {
   const request = event.data;
-  if (event.source !== window || event.origin !== 'http://127.0.0.1:4317' || request?.source !== 'wps-edit-demo') return;
-  chrome.runtime.sendMessage(request, (response) => {
-    const reply = chrome.runtime.lastError
-      ? { version: 1, status: 'failed', taskId: request.taskId, message: chrome.runtime.lastError.message }
-      : response;
-    window.postMessage({ source: 'wps-edit-extension', ...reply }, window.location.origin);
+  if (event.source !== window || event.origin !== window.location.origin) return;
+  if (!['http:', 'https:'].includes(window.location.protocol) || request?.source !== PAGE_SOURCE) return;
+  if (!['get-readiness', 'open'].includes(request.operation) || typeof request.requestId !== 'string') return;
+  extensionPort().postMessage({
+    kind: 'page-request',
+    requestId: request.requestId,
+    operation: request.operation,
+    input: request.input,
+    userActivation: navigator.userActivation?.isActive === true
   });
 });

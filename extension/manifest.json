@@ -1,26 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Local WPS Editing Demo",
-  "version": "0.1.0",
-  "description": "Relays versioned Editing Task control messages to the local agent.",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA39Dvmf+FJZNsMSMRc7Fqx/4Rua4wsPmkhEsynQ9uy+b8JQfN10ZjGfeY+Q0oJ4p8qY5FPvnVYICJCCuOtWgsSA7zQzoFGzVLIOj8RfXsIpblEWnX1gzndYlQ3ZPNB3YmMCLQZGpPmoJNPC+1Sw77fYIcADR+wWY6C3MSj8HuqAzc0tQRbz9VaHhluc3zCkRV9hO19h0SoJm12Q4sK6q47YRweNMzXsHBBWPJtt8JMqSOGwzAWXG8hwDVb66Zusy7chf6uGk4Ey4O5CL0FS4cLmRKO0RaAV1v2fcauVdx/WYNJf6ctcADohDke4VbM0F+9TgeuRhS/PcG7stQukthYwIDAQAB",
-  "host_permissions": [
-    "http://127.0.0.1:4317/*"
-  ],
-  "permissions": [
-    "nativeMessaging"
-  ],
+  "name": "Local WPS Editing",
+  "version": "1.0.0",
+  "description": "Open server-managed DOCX documents in local WPS and submit verified versions.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsa0sYIXM3urLK36PjQx0/L6bLSBopbffoJ8qNNJ6CPPkhw6egINVbH2kLdjGnfRnfUX5nGCUZWH5XK9s+JHi9nOrSlPSBzYjzzVx8SnGtH6Cddy89G4lDdprMStgHvpjjDDzf+5yAq5aQkoKCVWr5WhWbcHP05N3kDoOot0za69IEDwWl+52qZyT4LxWDDBI45LpgUrcYCDbH6NZftFgnEU85avueDHi7JqKUt6DAWxfj4JHTr8IZjh+EDVQ/nMuWP77eLO/1xsbwTW7lq65EeJwBe1Ap3ymoZ33rTS5Zj5qNQyu7zoaMFp+pfshJigCf3gw4yRCM289b12qOXW8pQIDAQAB",
+  "permissions": ["activeTab", "alarms", "nativeMessaging", "notifications", "storage"],
   "content_scripts": [
-    {
-      "matches": [
-        "http://127.0.0.1:4317/*"
-      ],
-      "js": [
-        "content.js"
-      ]
-    }
+    { "matches": ["http://*/*", "https://*/*"], "js": ["sdk.js"], "run_at": "document_start", "world": "MAIN" },
+    { "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_start" }
   ],
-  "background": {
-    "service_worker": "service-worker.js"
-  }
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "Local WPS Editing", "default_popup": "popup.html" }
 }

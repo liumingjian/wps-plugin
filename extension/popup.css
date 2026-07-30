@@ -1,0 +1,11 @@
+:root { color-scheme: light; font: 14px system-ui, sans-serif; }
+body { width: 340px; margin: 0; color: #202124; background: #fff; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #dadce0; }
+h1, h2 { margin: 0; font-size: 15px; letter-spacing: 0; }
+header span { color: #5f6368; font-size: 12px; }
+main { padding: 14px 16px 16px; }
+section { margin: 0 0 14px; }
+p { margin: 0 0 10px; line-height: 1.45; }
+button { min-height: 34px; border: 1px solid #1a73e8; border-radius: 4px; padding: 0 12px; color: #fff; background: #1a73e8; font: inherit; cursor: pointer; }
+button.secondary { margin-left: 8px; color: #1a73e8; background: #fff; }
+#notification-error { color: #b3261e; }

@@ -13,6 +13,133 @@ import (
 )
 
 const extensionID = "mbkblmlopgjhdlandbjhpemifinfllim"
+const productionExtensionID = "mjjoapeohdfkepmocpahbimmmenlfdcb"
+
+func TestCustomerReleaseStagesFixedIDExtensionAndARM64DEB(t *testing.T) {
+	repo := repoRoot(t)
+	root := t.TempDir()
+	extensionRoot := filepath.Join(root, "extension")
+	runScript(t, repo, filepath.Join(repo, "scripts", "stage-extension.sh"), append(os.Environ(), "OUTPUT="+extensionRoot, "VERSION=1.0.0"))
+	manifestData, err := os.ReadFile(filepath.Join(extensionRoot, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Name        string   `json:"name"`
+		Version     string   `json:"version"`
+		Permissions []string `json:"permissions"`
+		Key         string   `json:"key"`
+		Scripts     []struct {
+			Matches []string `json:"matches"`
+		} `json:"content_scripts"`
+	}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Name != "Local WPS Editing" || manifest.Version != "1.0.0" || manifest.Key == "" || !contains(manifest.Permissions, "nativeMessaging") || !contains(manifest.Permissions, "notifications") {
+		t.Fatalf("release manifest = %+v", manifest)
+	}
+	assertContains(t, filepath.Join(extensionRoot, "service-worker.js"), []string{"Document version submitted", "chrome.notifications.create", "ORIGIN_NOT_TRUSTED"})
+	if _, err := os.Stat(filepath.Join(extensionRoot, "icon.png")); err != nil {
+		t.Fatalf("staged extension PNG icon: %v", err)
+	}
+
+	deb := filepath.Join(root, "local-wps-editing_1.0.0-1_arm64.deb")
+	runScript(t, repo, filepath.Join(repo, "scripts", "build-deb-arm64.sh"), append(os.Environ(), "OUTPUT="+deb, "MAINTAINER=Supplier Support <support@example.com>"))
+	for field, want := range map[string]string{"Package": "local-wps-editing", "Version": "1.0.0-1", "Architecture": "arm64"} {
+		command := exec.Command("dpkg-deb", "-f", deb, field)
+		output, err := command.Output()
+		if err != nil || strings.TrimSpace(string(output)) != want {
+			t.Fatalf("DEB %s = %q, %v; want %q", field, output, err, want)
+		}
+	}
+	command := exec.Command("dpkg-deb", "-c", deb)
+	listing, err := command.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"./usr/lib/local-wps-editing/native-host", "./usr/bin/local-wps-editing-setup", "./usr/share/applications/local-wps-editing-setup.desktop", "./usr/share/icons/hicolor/64x64/apps/local-wps-editing.png"} {
+		if !strings.Contains(string(listing), path) {
+			t.Errorf("DEB does not contain %s", path)
+		}
+	}
+	if strings.Contains(string(listing), "systemd") || strings.Contains(string(listing), "autostart") {
+		t.Fatalf("DEB unexpectedly installs resident startup assets:\n%s", listing)
+	}
+}
+
+func TestProductionUserSetupIsIdempotentAndDeactivationRetainsRecoveryState(t *testing.T) {
+	repo := repoRoot(t)
+	root := t.TempDir()
+	configRoot := filepath.Join(root, "config", "local-wps-editing")
+	stateRoot := filepath.Join(root, "state", "local-wps-editing")
+	qaxConfig := filepath.Join(root, "config", "qaxbrowser")
+	manifestDir := filepath.Join(qaxConfig, "NativeMessagingHosts")
+	if err := os.MkdirAll(manifestDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(manifestDir, "other.json")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"run", "./cmd/native-host", "setup", "--json", "--config-root", configRoot, "--state-root", stateRoot, "--qax-config", qaxConfig, "--host-path", "/usr/lib/local-wps-editing/native-host"}
+	for range 2 {
+		command := exec.Command("go", args...)
+		command.Dir = repo
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("User Setup failed: %v\n%s", err, output)
+		}
+	}
+	manifestPath := filepath.Join(manifestDir, "com.liumingjian.wps_edit_agent.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Path           string   `json:"path"`
+		AllowedOrigins []string `json:"allowed_origins"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Path != "/usr/lib/local-wps-editing/native-host" || !contains(manifest.AllowedOrigins, "chrome-extension://"+productionExtensionID+"/") {
+		t.Fatalf("production Native Messaging manifest = %+v", manifest)
+	}
+	for path, mode := range map[string]os.FileMode{configRoot: 0o700, stateRoot: 0o700, manifestPath: 0o600} {
+		if got := fileModeAt(t, path); got != mode {
+			t.Fatalf("%s mode = %o, want %o", path, got, mode)
+		}
+	}
+	retained := filepath.Join(stateRoot, "tasks", "task-1", "snapshots", "000001.docx")
+	if err := os.MkdirAll(filepath.Dir(retained), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(retained, []byte("retained"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("go", "run", "./cmd/native-host", "unregister", "--json", "--config-root", configRoot, "--state-root", stateRoot, "--qax-config", qaxConfig)
+	command.Dir = repo
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("account deactivation failed: %v\n%s", err, output)
+	}
+	for _, path := range []string{unrelated, retained} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("account deactivation removed %s: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
+		t.Fatalf("product manifest remains after deactivation: %v", err)
+	}
+}
+
+func fileModeAt(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
+}
 
 func TestSetupAndUninstallDevelopmentDeliverable(t *testing.T) {
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
