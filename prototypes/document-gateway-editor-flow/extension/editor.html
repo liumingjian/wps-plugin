@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WPS Document Editor - Prototype</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <main class="editor-shell">
+    <header class="toolbar">
+      <div class="heading">
+        <strong id="document-title">WPS Document Editor</strong>
+        <span id="status">Consuming Editor Handoff...</span>
+      </div>
+      <button id="save" class="primary" type="button" disabled>Save</button>
+      <button id="return" type="button">Return to OA</button>
+    </header>
+    <aside class="risk" role="note">
+      Prototype limitation: save is enabled without independently verifying the Gateway response or Document identity.
+    </aside>
+    <section id="wps-container" aria-label="Embedded WPS editor"></section>
+    <details class="state" open>
+      <summary>Prototype state</summary>
+      <pre id="state-output"></pre>
+    </details>
+  </main>
+  <script src="flow.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>
+

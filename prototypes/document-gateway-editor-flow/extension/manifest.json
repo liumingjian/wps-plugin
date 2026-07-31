@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Document Gateway Editor Flow (PROTOTYPE)",
+  "version": "0.0.1",
+  "description": "Disposable target-machine prototype for the configured WPS Document Gateway flow.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsa0sYIXM3urLK36PjQx0/L6bLSBopbffoJ8qNNJ6CPPkhw6egINVbH2kLdjGnfRnfUX5nGCUZWH5XK9s+JHi9nOrSlPSBzYjzzVx8SnGtH6Cddy89G4lDdprMStgHvpjjDDzf+5yAq5aQkoKCVWr5WhWbcHP05N3kDoOot0za69IEDwWl+52qZyT4LxWDDBI45LpgUrcYCDbH6NZftFgnEU85avueDHi7JqKUt6DAWxfj4JHTr8IZjh+EDVQ/nMuWP77eLO/1xsbwTW7lq65EeJwBe1Ap3ymoZ33rTS5Zj5qNQyu7zoaMFp+pfshJigCf3gw4yRCM289b12qOXW8pQIDAQAB",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*"],
+      "js": ["intercept.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

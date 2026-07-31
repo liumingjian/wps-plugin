@@ -1,0 +1,168 @@
+{
+  "capturedAt": "2026-07-31T05:46:28.450Z",
+  "browser": "Chrome/102.0.5005.200",
+  "extensionOrigin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+  "marker": "ticket-40 gateway-flow 2026-07-31T05:46:13.878Z",
+  "oa": {
+    "before": "http://127.0.0.1:49240/oa",
+    "after": "http://127.0.0.1:49240/oa",
+    "visibilityAfterReturn": "visible",
+    "editorClosed": true
+  },
+  "editor": {
+    "url": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb/editor.html?handoffId=a2de2c17-b028-49fc-9245-59fa7315ecfc",
+    "savedState": {
+      "phase": "saved",
+      "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+      "gatewayUrl": "http://127.0.0.1:49240/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=a2de2c17-b028-49fc-9245-59fa7315ecfc",
+      "saveUrl": "http://127.0.0.1:49240/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx",
+      "plugin": {
+        "mimeType": "application/x-wps",
+        "applicationName": "WPS文字"
+      },
+      "openResult": true,
+      "saveResult": true,
+      "error": null,
+      "integrityGate": "DEFERRED: openDocument and ActiveDocument do not verify Document identity",
+      "events": [
+        {
+          "type": "handoff-consumed",
+          "at": "2026-07-31T05:46:17.384Z"
+        },
+        {
+          "type": "plugin-ready",
+          "at": "2026-07-31T05:46:19.400Z"
+        },
+        {
+          "type": "document-opened",
+          "at": "2026-07-31T05:46:24.723Z"
+        },
+        {
+          "type": "save-started",
+          "at": "2026-07-31T05:46:24.820Z"
+        },
+        {
+          "type": "save-finished",
+          "at": "2026-07-31T05:46:25.431Z"
+        }
+      ]
+    },
+    "duplicateConsumptionState": {
+      "phase": "failed",
+      "sourcePath": null,
+      "gatewayUrl": null,
+      "saveUrl": null,
+      "plugin": null,
+      "openResult": null,
+      "saveResult": null,
+      "error": "Editor Handoff is missing, expired, or already consumed",
+      "integrityGate": "DEFERRED: openDocument and ActiveDocument do not verify Document identity",
+      "events": [
+        {
+          "type": "failed",
+          "at": "2026-07-31T05:46:28.202Z"
+        }
+      ]
+    }
+  },
+  "server": {
+    "gatewayRequests": [
+      {
+        "artifactFormat": "DOCX/ZIP",
+        "auth": "network-trusted-no-cookie-required",
+        "cookie": "",
+        "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+        "gateway": true,
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49240",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "method": "GET",
+        "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=a2de2c17-b028-49fc-9245-59fa7315ecfc",
+        "status": 200,
+        "time": "2026-07-31T05:46:19.651Z"
+      }
+    ],
+    "saveRequests": [
+      {
+        "auth": "accepted",
+        "cookie": "oa_session=ticket-40-demo-session",
+        "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+        "headers": {
+          "Accept": "*/*",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Content-Length": "10316",
+          "Content-Type": "multipart/form-data; boundary=----WebKitFormBoundaryFBzo8ckbzJSTUCUc",
+          "Cookie": "oa_session=ticket-40-demo-session",
+          "Host": "127.0.0.1:49240",
+          "Origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "none",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "POST",
+        "multipartFields": [
+          {
+            "bytes": 32,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "md5sum",
+            "value": "aeb114fd3cf897c0f135c9332bd35787"
+          },
+          {
+            "bytes": 74,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "filename",
+            "value": "formId:formeditor;sourcePath:%2FUploadFiles%2F2026%2Fquarterly-report.docx"
+          },
+          {
+            "bytes": 9826,
+            "contentType": "application/octet-stream",
+            "filename": "blob",
+            "name": "filedata",
+            "value": null
+          }
+        ],
+        "path": "/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx",
+        "response": {
+          "Data": {
+            "fileurl": "/UploadFiles/2026/quarterly-report.docx"
+          },
+          "Message": "Document overwritten",
+          "Success": true
+        },
+        "status": 200,
+        "storedBytes": 9826,
+        "storedFormat": "DOCX/ZIP",
+        "storedSha256": "b94262a7080902f90bae2d7922b34642f74519f96de3dd22ac21e086a5f0f637",
+        "time": "2026-07-31T05:46:25.425Z"
+      }
+    ],
+    "artifact": {
+      "bytes": 9826,
+      "sha256": "b94262a7080902f90bae2d7922b34642f74519f96de3dd22ac21e086a5f0f637",
+      "format": "DOCX/ZIP",
+      "marker": "ticket-40 gateway-flow 2026-07-31T05:46:13.878Z",
+      "markerPresent": true
+    }
+  },
+  "assertions": {
+    "interceptedIntoPackagedEditor": true,
+    "sourcePathPreserved": true,
+    "gatewayTemplateResolved": true,
+    "authenticatedOverwriteSucceeded": true,
+    "savedEditPresentInStoredDocument": true,
+    "gatewayReadNeededNoCookie": true,
+    "handoffWasSingleUse": true,
+    "returnedToStillOpenOaTab": true,
+    "limitationStillExplicit": true
+  }
+}

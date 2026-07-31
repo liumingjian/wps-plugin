@@ -1,0 +1,25 @@
+Gtk-Message: 13:46:13.672: Failed to load module "ukuireload-gtk-module"
+[1470720:1470720:0731/134613.946299:ERROR:browser:secure_dns_policy_wrapper.cc(31)] Parse StrategyExt error.
+libva error: vaGetDriverNameByIndex() failed with unknown libva error, driver_name = (null)
+
+DevTools listening on ws://127.0.0.1:49241/devtools/browser/392de620-a706-47ea-ad5e-1b1963bbafa9
+[1470772:1470772:0731/134614.134232:ERROR:gpu-process:gpu_memory_buffer_support_x11.cc(44)] dri3 extension not supported.
+[1470720:1470720:0731/134614.218354:ERROR:browser:template_url_service.cc(2402)] default engine is same with prepopulated engine.
+Gtk-Message: 13:46:17.480: Failed to load module "ukuireload-gtk-module"
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:1471261): Gdk-WARNING **: 13:46:18.207: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7fadd5b748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
