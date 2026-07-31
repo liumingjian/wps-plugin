@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WPS NPAPI extension host probe</title>
+  <style>
+    body { margin: 24px; font: 16px/1.5 sans-serif; color: #17202a; }
+    object { display: block; width: 640px; height: 360px; margin: 16px 0; border: 1px solid #9aa4b2; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>WPS NPAPI extension host probe</h1>
+  <p>PROTOTYPE: this page tests NPAPI execution on a <code>chrome-extension://</code> origin.</p>
+  <object id="webwps" type="application/x-wps">
+    <param name="Enabled" value="1">
+  </object>
+  <pre id="result">Running...</pre>
+  <script src="probe.js"></script>
+</body>
+</html>
