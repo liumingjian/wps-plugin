@@ -1,0 +1,644 @@
+{
+  "capturedAt": "2026-07-31T02:49:01.607Z",
+  "browser": "Chrome/102.0.5005.200",
+  "extensionOrigin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+  "browserSessionCookie": {
+    "name": "oa_session",
+    "value": "ticket-38-demo-session",
+    "domain": "127.0.0.1",
+    "path": "/",
+    "expires": -1,
+    "size": 32,
+    "httpOnly": true,
+    "secure": false,
+    "session": true,
+    "sameSite": "Lax",
+    "priority": "Medium",
+    "sameParty": false,
+    "sourceScheme": "NonSecure",
+    "sourcePort": 49234
+  },
+  "cases": [
+    {
+      "case": "authenticated-open-save",
+      "startedAt": "2026-07-31T02:48:08.855Z",
+      "origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+      "sourcePath": "/UploadFiles/2026/contract.docx",
+      "marker": "ticket-38 authenticated-open-save 2026-07-31T02:48:08.855Z",
+      "events": [
+        {
+          "at": "2026-07-31T02:48:11.559Z",
+          "kind": "warn",
+          "message": "正在打开文档",
+          "detail": "http://127.0.0.1:49234/UploadFiles/2026/contract.docx?case=authenticated-open-save&cb=2026-07-31T02%3A48%3A08.855Z"
+        },
+        {
+          "at": "2026-07-31T02:48:17.943Z",
+          "kind": "warn",
+          "message": "正在保存",
+          "detail": "http://127.0.0.1:49234/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx"
+        },
+        {
+          "at": "2026-07-31T02:48:21.044Z",
+          "kind": "ok",
+          "message": "WPS 保存调用已返回",
+          "detail": "true"
+        }
+      ],
+      "finalStatus": {
+        "kind": "ok",
+        "message": "WPS 保存调用已返回",
+        "detail": "true"
+      },
+      "complete": true,
+      "applicationName": "WPS文字",
+      "openResult": true,
+      "editResult": "marker inserted",
+      "saveResult": true,
+      "completedAt": "2026-07-31T02:48:21.044Z"
+    },
+    {
+      "case": "public-open-protected-save",
+      "startedAt": "2026-07-31T02:48:22.859Z",
+      "origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+      "sourcePath": "/UploadFiles/2026/contract.docx",
+      "marker": "ticket-38 public-open-protected-save 2026-07-31T02:48:22.859Z",
+      "events": [
+        {
+          "at": "2026-07-31T02:48:24.543Z",
+          "kind": "warn",
+          "message": "正在打开文档",
+          "detail": "http://127.0.0.1:49234/control/contract.docx?case=public-open-protected-save&cb=2026-07-31T02%3A48%3A22.859Z"
+        },
+        {
+          "at": "2026-07-31T02:48:30.872Z",
+          "kind": "warn",
+          "message": "正在保存",
+          "detail": "http://127.0.0.1:49234/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx"
+        },
+        {
+          "at": "2026-07-31T02:48:33.958Z",
+          "kind": "ok",
+          "message": "WPS 保存调用已返回",
+          "detail": "true"
+        }
+      ],
+      "finalStatus": {
+        "kind": "ok",
+        "message": "WPS 保存调用已返回",
+        "detail": "true"
+      },
+      "complete": true,
+      "applicationName": "WPS文字",
+      "openResult": true,
+      "editResult": "marker inserted",
+      "saveResult": true,
+      "completedAt": "2026-07-31T02:48:33.958Z"
+    },
+    {
+      "case": "public-open-protected-save-no-session",
+      "startedAt": "2026-07-31T02:48:35.754Z",
+      "origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+      "sourcePath": "/UploadFiles/2026/contract.docx",
+      "marker": "ticket-38 public-open-protected-save-no-session 2026-07-31T02:48:35.754Z",
+      "events": [
+        {
+          "at": "2026-07-31T02:48:37.750Z",
+          "kind": "warn",
+          "message": "正在打开文档",
+          "detail": "http://127.0.0.1:49234/control/contract.docx?case=public-open-protected-save-no-session&cb=2026-07-31T02%3A48%3A35.754Z"
+        },
+        {
+          "at": "2026-07-31T02:48:44.107Z",
+          "kind": "warn",
+          "message": "正在保存",
+          "detail": "http://127.0.0.1:49234/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx"
+        },
+        {
+          "at": "2026-07-31T02:48:44.195Z",
+          "kind": "error",
+          "message": "打开或保存失败",
+          "detail": "Error: WPS saveURL_FormData returned false\n    at run (chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb/editor.js:90:13)"
+        }
+      ],
+      "finalStatus": {
+        "kind": "error",
+        "message": "打开或保存失败",
+        "detail": "Error: WPS saveURL_FormData returned false\n    at run (chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb/editor.js:90:13)"
+      },
+      "complete": true,
+      "applicationName": "WPS文字",
+      "openResult": true,
+      "editResult": "marker inserted",
+      "saveResult": false,
+      "error": "Error: WPS saveURL_FormData returned false\n    at run (chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb/editor.js:90:13)",
+      "completedAt": "2026-07-31T02:48:44.195Z"
+    },
+    {
+      "case": "authenticated-reopen-save",
+      "startedAt": "2026-07-31T02:48:47.730Z",
+      "origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+      "sourcePath": "/UploadFiles/2026/contract.docx",
+      "marker": "ticket-38 authenticated-reopen-save 2026-07-31T02:48:47.730Z",
+      "events": [
+        {
+          "at": "2026-07-31T02:48:49.704Z",
+          "kind": "warn",
+          "message": "正在打开文档",
+          "detail": "http://127.0.0.1:49234/UploadFiles/2026/contract.docx?case=authenticated-reopen-save&cb=2026-07-31T02%3A48%3A47.730Z"
+        },
+        {
+          "at": "2026-07-31T02:48:56.051Z",
+          "kind": "warn",
+          "message": "正在保存",
+          "detail": "http://127.0.0.1:49234/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx"
+        },
+        {
+          "at": "2026-07-31T02:48:59.163Z",
+          "kind": "ok",
+          "message": "WPS 保存调用已返回",
+          "detail": "true"
+        }
+      ],
+      "finalStatus": {
+        "kind": "ok",
+        "message": "WPS 保存调用已返回",
+        "detail": "true"
+      },
+      "complete": true,
+      "applicationName": "WPS文字",
+      "openResult": true,
+      "editResult": "marker inserted",
+      "saveResult": true,
+      "completedAt": "2026-07-31T02:48:59.163Z"
+    }
+  ],
+  "server": {
+    "requests": [
+      {
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "curl/7.68.0"
+        },
+        "method": "GET",
+        "path": "/oa/login",
+        "status": 200,
+        "time": "2026-07-31T02:48:05.597Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Host": "127.0.0.1:49234",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "none",
+          "Sec-Fetch-User": "?1",
+          "Upgrade-Insecure-Requests": "1",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "GET",
+        "path": "/oa/session/start",
+        "setCookie": "oa_session=ticket-38-demo-session; Path=/; HttpOnly; SameSite=Lax",
+        "status": 200,
+        "time": "2026-07-31T02:48:07.106Z"
+      },
+      {
+        "cookie": "oa_session=ticket-38-demo-session",
+        "headers": {
+          "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Cookie": "oa_session=ticket-38-demo-session",
+          "Host": "127.0.0.1:49234",
+          "Referer": "http://127.0.0.1:49234/oa/session/start",
+          "Sec-Fetch-Dest": "image",
+          "Sec-Fetch-Mode": "no-cors",
+          "Sec-Fetch-Site": "same-origin",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "GET",
+        "path": "/favicon.ico",
+        "status": 404,
+        "time": "2026-07-31T02:48:07.194Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept-Encoding": "gzip, deflate",
+          "Accept-Language": "zh-CN,en,*",
+          "Connection": "Keep-Alive",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Office Protocol Discovery"
+        },
+        "method": "OPTIONS",
+        "path": "/UploadFiles/2026/",
+        "status": 204,
+        "time": "2026-07-31T02:48:11.778Z"
+      },
+      {
+        "auth": "missing",
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "location": "/oa/login?returnUrl=%2FUploadFiles%2F2026%2Fcontract.docx%3Fcase%3Dauthenticated-open-save%26cb%3D2026-07-31T02%253A48%253A08.855Z",
+        "method": "GET",
+        "path": "/UploadFiles/2026/contract.docx?case=authenticated-open-save&cb=2026-07-31T02%3A48%3A08.855Z",
+        "status": 302,
+        "time": "2026-07-31T02:48:11.847Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "method": "GET",
+        "path": "/oa/login?returnUrl=%2FUploadFiles%2F2026%2Fcontract.docx%3Fcase%3Dauthenticated-open-save%26cb%3D2026-07-31T02%253A48%253A08.855Z",
+        "status": 200,
+        "time": "2026-07-31T02:48:11.849Z"
+      },
+      {
+        "auth": "accepted",
+        "cookie": "oa_session=ticket-38-demo-session",
+        "decodedFileurl": "/UploadFiles/2026/contract.docx",
+        "headers": {
+          "Accept": "*/*",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Content-Length": "12243",
+          "Content-Type": "multipart/form-data; boundary=----WebKitFormBoundary6jLE03n843iKpwWo",
+          "Cookie": "oa_session=ticket-38-demo-session",
+          "Host": "127.0.0.1:49234",
+          "Origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "none",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "POST",
+        "multipartFields": [
+          {
+            "bytes": 32,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "md5sum",
+            "value": "c5ae732b55208f97ee1864a772a542b0"
+          },
+          {
+            "bytes": 51,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "filename",
+            "value": "formId:formeditor;probeCase:authenticated-open-save"
+          },
+          {
+            "bytes": 11776,
+            "contentType": "application/octet-stream",
+            "filename": "blob",
+            "name": "filedata",
+            "value": null
+          }
+        ],
+        "path": "/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx",
+        "response": {
+          "Data": {
+            "fileurl": "/UploadFiles/2026/contract.docx"
+          },
+          "Message": "Document overwritten",
+          "Success": true
+        },
+        "status": 200,
+        "storedBytes": 11776,
+        "storedFormat": "CFB/OLE",
+        "storedSha256": "d645f32176dad4373335b941368994d944ce77ec1e33cef3268eb7183aa12168",
+        "time": "2026-07-31T02:48:18.037Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept-Encoding": "gzip, deflate",
+          "Accept-Language": "zh-CN,en,*",
+          "Connection": "Keep-Alive",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Office Protocol Discovery"
+        },
+        "method": "OPTIONS",
+        "path": "/control/",
+        "status": 204,
+        "time": "2026-07-31T02:48:24.744Z"
+      },
+      {
+        "artifactFormat": "CFB/OLE",
+        "auth": "public-control",
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "method": "GET",
+        "path": "/control/contract.docx?case=public-open-protected-save&cb=2026-07-31T02%3A48%3A22.859Z",
+        "status": 200,
+        "time": "2026-07-31T02:48:24.784Z"
+      },
+      {
+        "auth": "accepted",
+        "cookie": "oa_session=ticket-38-demo-session",
+        "decodedFileurl": "/UploadFiles/2026/contract.docx",
+        "headers": {
+          "Accept": "*/*",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Content-Length": "11222",
+          "Content-Type": "multipart/form-data; boundary=----WebKitFormBoundaryljvFiUffnOutTwYS",
+          "Cookie": "oa_session=ticket-38-demo-session",
+          "Host": "127.0.0.1:49234",
+          "Origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "none",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "POST",
+        "multipartFields": [
+          {
+            "bytes": 32,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "md5sum",
+            "value": "5b5fd764029967bcf68a099f9fc88dea"
+          },
+          {
+            "bytes": 54,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "filename",
+            "value": "formId:formeditor;probeCase:public-open-protected-save"
+          },
+          {
+            "bytes": 10752,
+            "contentType": "application/octet-stream",
+            "filename": "blob",
+            "name": "filedata",
+            "value": null
+          }
+        ],
+        "path": "/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx",
+        "response": {
+          "Data": {
+            "fileurl": "/UploadFiles/2026/contract.docx"
+          },
+          "Message": "Document overwritten",
+          "Success": true
+        },
+        "status": 200,
+        "storedBytes": 10752,
+        "storedFormat": "CFB/OLE",
+        "storedSha256": "ff6f821bd3acbc67b2d86c324fecce6a6da74e55ca306c9407b45ba20524ede2",
+        "time": "2026-07-31T02:48:30.952Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept-Encoding": "gzip, deflate",
+          "Accept-Language": "zh-CN,en,*",
+          "Connection": "Keep-Alive",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Office Protocol Discovery"
+        },
+        "method": "OPTIONS",
+        "path": "/control/",
+        "status": 204,
+        "time": "2026-07-31T02:48:37.877Z"
+      },
+      {
+        "artifactFormat": "CFB/OLE",
+        "auth": "public-control",
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "method": "GET",
+        "path": "/control/contract.docx?case=public-open-protected-save-no-session&cb=2026-07-31T02%3A48%3A35.754Z",
+        "status": 200,
+        "time": "2026-07-31T02:48:38.016Z"
+      },
+      {
+        "auth": "missing",
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Content-Length": "11233",
+          "Content-Type": "multipart/form-data; boundary=----WebKitFormBoundaryLSOArA5WYRrXqLOm",
+          "Host": "127.0.0.1:49234",
+          "Origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "none",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "POST",
+        "multipartFields": [
+          {
+            "bytes": 32,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "md5sum",
+            "value": "2f7b002b7819c170c1fd98d92d570aed"
+          },
+          {
+            "bytes": 65,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "filename",
+            "value": "formId:formeditor;probeCase:public-open-protected-save-no-session"
+          },
+          {
+            "bytes": 10752,
+            "contentType": "application/octet-stream",
+            "filename": "blob",
+            "name": "filedata",
+            "value": null
+          }
+        ],
+        "path": "/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx",
+        "response": {
+          "Data": null,
+          "Message": "OA session required",
+          "Success": false
+        },
+        "status": 401,
+        "time": "2026-07-31T02:48:44.189Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Host": "127.0.0.1:49234",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "none",
+          "Sec-Fetch-User": "?1",
+          "Upgrade-Insecure-Requests": "1",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "GET",
+        "path": "/oa/session/start",
+        "setCookie": "oa_session=ticket-38-demo-session; Path=/; HttpOnly; SameSite=Lax",
+        "status": 200,
+        "time": "2026-07-31T02:48:46.054Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept-Encoding": "gzip, deflate",
+          "Accept-Language": "zh-CN,en,*",
+          "Connection": "Keep-Alive",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Office Protocol Discovery"
+        },
+        "method": "OPTIONS",
+        "path": "/UploadFiles/2026/",
+        "status": 204,
+        "time": "2026-07-31T02:48:49.885Z"
+      },
+      {
+        "auth": "missing",
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "location": "/oa/login?returnUrl=%2FUploadFiles%2F2026%2Fcontract.docx%3Fcase%3Dauthenticated-reopen-save%26cb%3D2026-07-31T02%253A48%253A47.730Z",
+        "method": "GET",
+        "path": "/UploadFiles/2026/contract.docx?case=authenticated-reopen-save&cb=2026-07-31T02%3A48%3A47.730Z",
+        "status": 302,
+        "time": "2026-07-31T02:48:49.952Z"
+      },
+      {
+        "cookie": "",
+        "headers": {
+          "Accept": "*/*",
+          "Host": "127.0.0.1:49234",
+          "User-Agent": "Microsoft Data Access Internet Publishing Provider DAV"
+        },
+        "method": "GET",
+        "path": "/oa/login?returnUrl=%2FUploadFiles%2F2026%2Fcontract.docx%3Fcase%3Dauthenticated-reopen-save%26cb%3D2026-07-31T02%253A48%253A47.730Z",
+        "status": 200,
+        "time": "2026-07-31T02:48:49.953Z"
+      },
+      {
+        "auth": "accepted",
+        "cookie": "oa_session=ticket-38-demo-session",
+        "decodedFileurl": "/UploadFiles/2026/contract.docx",
+        "headers": {
+          "Accept": "*/*",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Accept-Language": "zh-CN,zh;q=0.9",
+          "Connection": "keep-alive",
+          "Content-Length": "12245",
+          "Content-Type": "multipart/form-data; boundary=----WebKitFormBoundaryVpdiZVHkPqfPHCtS",
+          "Cookie": "oa_session=ticket-38-demo-session",
+          "Host": "127.0.0.1:49234",
+          "Origin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "none",
+          "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser",
+          "sec-ch-ua": "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"102\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\""
+        },
+        "method": "POST",
+        "multipartFields": [
+          {
+            "bytes": 32,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "md5sum",
+            "value": "294abbc84587e8b640d4b14c1da72844"
+          },
+          {
+            "bytes": 53,
+            "contentType": "text/plain",
+            "filename": null,
+            "name": "filename",
+            "value": "formId:formeditor;probeCase:authenticated-reopen-save"
+          },
+          {
+            "bytes": 11776,
+            "contentType": "application/octet-stream",
+            "filename": "blob",
+            "name": "filedata",
+            "value": null
+          }
+        ],
+        "path": "/RoadFlow/uploadfiles/OfficeSave?fileurl=%2FUploadFiles%2F2026%2Fcontract.docx",
+        "response": {
+          "Data": {
+            "fileurl": "/UploadFiles/2026/contract.docx"
+          },
+          "Message": "Document overwritten",
+          "Success": true
+        },
+        "status": 200,
+        "storedBytes": 11776,
+        "storedFormat": "CFB/OLE",
+        "storedSha256": "d4af694ca3caa9747df36f8c3557ae8aded65fa5f47f000886434cfcdc0fc874",
+        "time": "2026-07-31T02:48:56.155Z"
+      }
+    ],
+    "artifact": {
+      "bytes": 11776,
+      "sha256": "d4af694ca3caa9747df36f8c3557ae8aded65fa5f47f000886434cfcdc0fc874",
+      "format": "CFB/OLE",
+      "markers": [],
+      "markerPresence": {
+        "authenticated-open-save": false,
+        "public-open-protected-save": false,
+        "public-open-protected-save-no-session": false,
+        "authenticated-reopen-save": true
+      }
+    }
+  }
+}
