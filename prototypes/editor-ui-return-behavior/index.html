@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>公文正文编辑 - UI Prototype</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+  <!-- Three editor variants, switchable via ?variant=, on this throwaway prototype route. -->
+  <main id="app"></main>
+
+  <template id="wps-surface-template">
+    <section class="wps-surface" aria-label="WPS 正文编辑区域">
+      <img src="wps-editor-surface.png" alt="WPS 正文编辑界面参考">
+    </section>
+  </template>
+
+  <div class="prototype-switcher" aria-label="原型切换器">
+    <button id="previous-variant" class="switcher-arrow" type="button" title="上一个方案" aria-label="上一个方案">&#8592;</button>
+    <strong id="variant-label"></strong>
+    <button id="next-variant" class="switcher-arrow" type="button" title="下一个方案" aria-label="下一个方案">&#8594;</button>
+    <span class="switcher-divider" aria-hidden="true"></span>
+    <label for="state-select">状态</label>
+    <select id="state-select">
+      <option value="loading">正在打开</option>
+      <option value="ready">可编辑</option>
+      <option value="saving">正在保存</option>
+      <option value="saved">已保存</option>
+      <option value="failed">保存失败</option>
+    </select>
+  </div>
+
+  <dialog id="discard-dialog">
+    <form method="dialog">
+      <h2>放弃未保存的修改？</h2>
+      <p>这些修改尚未写回 OA 正文，返回后无法恢复。</p>
+      <div class="dialog-actions">
+        <button value="cancel" type="submit">继续编辑</button>
+        <button id="confirm-discard" class="danger" value="confirm" type="submit">放弃修改并返回</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="prototype.js"></script>
+</body>
+</html>
