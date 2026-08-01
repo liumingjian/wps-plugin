@@ -12,7 +12,40 @@ chrome.storage.onChanged.addListener((changes, area) => {
   configuration = trustedOrigin === location.origin ? { trustedOrigin } : undefined;
 });
 
-document.addEventListener('click', event => {
+async function redirects(sourceURL) {
+  let response;
+  try {
+    response = await fetch(sourceURL, {
+      cache: 'no-store',
+      credentials: 'include',
+      redirect: 'manual'
+    });
+  } catch {
+    return false;
+  }
+  const redirected = response.type === 'opaqueredirect' ||
+    (response.status >= 300 && response.status < 400);
+  try { await response.body?.cancel(); } catch {}
+  return redirected;
+}
+
+async function enterPackagedEditor(source, title) {
+  if (await redirects(source.href)) {
+    location.assign(source.href);
+    return;
+  }
+  const response = await chrome.runtime.sendMessage({
+    type: 'create-editor-handoff',
+    activation: {
+      returnURL: location.href,
+      sourceURL: source.href,
+      title
+    }
+  });
+  if (response?.ok) location.replace(response.editorURL);
+}
+
+window.addEventListener('click', event => {
   if (!configuration || !event.isTrusted || event.defaultPrevented || event.button !== 0 ||
       event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
@@ -31,14 +64,5 @@ document.addEventListener('click', event => {
       !/\.docx?$/i.test(source.pathname)) return;
 
   event.preventDefault();
-  chrome.runtime.sendMessage({
-    type: 'create-editor-handoff',
-    activation: {
-      returnURL: location.href,
-      sourceURL: source.href,
-      title: anchor.textContent.trim()
-    }
-  }).then(response => {
-    if (response?.ok) location.replace(response.editorURL);
-  });
-}, true);
+  void enterPackagedEditor(source, anchor.textContent.trim()).catch(() => {});
+}, false);

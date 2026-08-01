@@ -5,7 +5,10 @@ import vm from 'node:vm';
 let clickListener;
 let storageListener;
 let replacementURL;
+let assignedURL;
+let nextResponseType = 'basic';
 const messages = [];
+const fetches = [];
 
 globalThis.chrome = {
   runtime: {
@@ -21,16 +24,27 @@ globalThis.chrome = {
     onChanged: { addListener(listener) { storageListener = listener; } }
   }
 };
-globalThis.document = {
+globalThis.window = {
   addEventListener(type, listener, capture) {
     assert.equal(type, 'click');
-    assert.equal(capture, true);
+    assert.equal(capture, false);
     clickListener = listener;
   }
+};
+globalThis.fetch = async (url, options) => {
+  fetches.push({ url, options });
+  const type = nextResponseType;
+  nextResponseType = 'basic';
+  return {
+    type,
+    status: type === 'opaqueredirect' ? 0 : 200,
+    body: { async cancel() {} }
+  };
 };
 globalThis.location = {
   href: 'https://oa.example.test/workflow/current?step=review#document',
   origin: 'https://oa.example.test',
+  assign(url) { assignedURL = url; },
   replace(url) { replacementURL = url; }
 };
 
@@ -60,6 +74,10 @@ clickListener({
 await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(prevented, true);
+assert.deepEqual(fetches, [{
+  url: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
+  options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
+}]);
 assert.deepEqual(messages, [
   { type: 'configuration' },
   {
@@ -75,6 +93,7 @@ assert.equal(replacementURL, 'chrome-extension://fixed/editor.html?handoff=opaqu
 
 for (const activation of [
   { isTrusted: false, href: 'https://oa.example.test/documents/report.docx' },
+  { defaultPrevented: true, href: 'https://oa.example.test/documents/report.docx' },
   { ctrlKey: true, href: 'https://oa.example.test/documents/report.docx' },
   { button: 1, href: 'https://oa.example.test/documents/report.docx' },
   { href: 'https://files.example.test/documents/report.docx' },
@@ -84,6 +103,7 @@ for (const activation of [
 ]) {
   let passThroughPrevented = false;
   const messageCount = messages.length;
+  const fetchCount = fetches.length;
   clickListener({
     isTrusted: activation.isTrusted ?? true,
     button: activation.button ?? 0,
@@ -91,7 +111,7 @@ for (const activation of [
     ctrlKey: activation.ctrlKey ?? false,
     metaKey: activation.metaKey ?? false,
     shiftKey: activation.shiftKey ?? false,
-    defaultPrevented: false,
+    defaultPrevented: activation.defaultPrevented ?? false,
     preventDefault() { passThroughPrevented = true; },
     target: {
       closest() { return { href: activation.href, textContent: 'Document' }; }
@@ -100,7 +120,29 @@ for (const activation of [
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(passThroughPrevented, false, `prevented ${activation.href}`);
   assert.equal(messages.length, messageCount, `created handoff for ${activation.href}`);
+  assert.equal(fetches.length, fetchCount, `probed ${activation.href}`);
 }
+
+nextResponseType = 'opaqueredirect';
+let redirectPrevented = false;
+const redirectMessageCount = messages.length;
+clickListener({
+  isTrusted: true,
+  button: 0,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+  defaultPrevented: false,
+  preventDefault() { redirectPrevented = true; },
+  target: {
+    closest() { return { href: 'https://oa.example.test/documents/redirected.docx', textContent: 'Document' }; }
+  }
+});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(redirectPrevented, true);
+assert.equal(assignedURL, 'https://oa.example.test/documents/redirected.docx');
+assert.equal(messages.length, redirectMessageCount);
 
 storageListener({
   roadFlowIntegration: {
