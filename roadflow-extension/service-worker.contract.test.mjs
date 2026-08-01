@@ -33,6 +33,7 @@ globalThis.chrome = {
 };
 globalThis.importScripts = async () => {};
 vm.runInThisContext(await readFile(new URL('./configuration.js', import.meta.url), 'utf8'), { filename: 'configuration.js' });
+vm.runInThisContext(await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8'), { filename: 'source-identity-contract.js' });
 vm.runInThisContext(await readFile(new URL('./service-worker.js', import.meta.url), 'utf8'), { filename: 'service-worker.js' });
 
 const configuration = {
@@ -115,6 +116,23 @@ assert.deepEqual(successful[0].handoff, {
 });
 assert.match(successful[0].handoff.cacheIdentity, /^[a-f0-9]{32}$/);
 assert.deepEqual(await consume(), { ok: false });
+
+const docActivation = {
+  returnURL,
+  sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+  title: 'Legacy Document'
+};
+const createdDoc = await new Promise(resolve => {
+  messageListener({ type: 'create-editor-handoff', activation: docActivation }, { url: returnURL, tab: { id: 7 } }, resolve);
+});
+assert.equal(createdDoc.ok, true);
+const docHandoffID = new URL(createdDoc.editorURL).searchParams.get('handoff');
+const consumedDoc = await new Promise(resolve => {
+  messageListener({ type: 'consume-editor-handoff', handoffID: docHandoffID }, { url: createdDoc.editorURL }, resolve);
+});
+assert.equal(consumedDoc.ok, true);
+assert.equal(consumedDoc.handoff.expectedFormat, 'doc');
+assert.equal('sourceIdentity' in consumedDoc.handoff, false);
 
 for (const sourceIdentity of [
   undefined,

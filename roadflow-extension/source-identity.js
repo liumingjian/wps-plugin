@@ -14,17 +14,23 @@
   ];
   const FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
   const LIMITS = Object.freeze({
-    compressedBytes: 25 * 1024 * 1024,
+    compressedBytes: RoadFlowSourceIdentityContract.MAX_COMPRESSED_BYTES,
     archiveMembers: 2048,
     expansionRatio: 100,
     uncompressedBytes: 100 * 1024 * 1024
   });
 
-  function parseXML(source, rootName, namespaces) {
+  function parseXMLDocument(source) {
+    if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('Unsupported OOXML declaration');
     const document = new DOMParser().parseFromString(source, 'application/xml');
+    if (document.getElementsByTagName('parsererror').length) throw new Error('Malformed OOXML');
+    return document;
+  }
+
+  function parseXML(source, rootName, namespaces) {
+    const document = parseXMLDocument(source);
     const allowedNamespaces = Array.isArray(namespaces) ? namespaces : [namespaces];
-    if (document.getElementsByTagName('parsererror').length ||
-        document.documentElement?.localName !== rootName ||
+    if (document.documentElement?.localName !== rootName ||
         !allowedNamespaces.includes(document.documentElement?.namespaceURI)) throw new Error('Malformed OOXML');
     return document;
   }
@@ -68,20 +74,22 @@
     }
   }
 
-  async function readXMLMember(entry) {
-    const chunks = [];
-    let byteCount = 0;
+  async function readArchiveMember(entry, retain, expandedState) {
+    const chunks = retain ? [] : undefined;
+    let memberByteCount = 0;
     const writable = new WritableStream({
       write(chunk) {
-        byteCount += chunk.byteLength;
-        if (byteCount > entry.uncompressedSize || byteCount > LIMITS.uncompressedBytes) {
+        memberByteCount += chunk.byteLength;
+        expandedState.byteCount += chunk.byteLength;
+        if (memberByteCount > entry.uncompressedSize || expandedState.byteCount > LIMITS.uncompressedBytes) {
           throw new Error('Expanded size limit exceeded');
         }
-        chunks.push(Uint8Array.from(chunk));
+        if (retain) chunks.push(Uint8Array.from(chunk));
       }
     });
-    await entry.getData(writable);
-    const bytes = new Uint8Array(byteCount);
+    await entry.getData(writable, { checkSignature: true, checkOverlappingEntry: true });
+    if (!retain) return undefined;
+    const bytes = new Uint8Array(memberByteCount);
     let offset = 0;
     for (const chunk of chunks) {
       bytes.set(chunk, offset);
@@ -90,16 +98,45 @@
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   }
 
+  async function readBoundedSource(response) {
+    if (!response.body?.getReader) throw new Error('Source body unavailable');
+    const reader = response.body.getReader();
+    const chunks = [];
+    let byteCount = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        byteCount += value.byteLength;
+        if (byteCount > LIMITS.compressedBytes) throw new Error('Compressed size limit exceeded');
+        chunks.push(Uint8Array.from(value));
+      }
+    } catch (error) {
+      try { await reader.cancel(error); } catch {}
+      throw error;
+    }
+    if (!byteCount) throw new Error('Empty source');
+    const bytes = new Uint8Array(byteCount);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+
   async function derive(sourceURL, expectedFormat) {
     try {
       const source = new URL(sourceURL);
       if (expectedFormat !== 'docx' || !/\.docx$/i.test(source.pathname)) throw new Error('Format mismatch');
-      const response = await fetch(source.href, {
+      const requestURL = new URL(source.href);
+      requestURL.hash = '';
+      const response = await fetch(requestURL.href, {
         cache: 'no-store',
         credentials: 'include',
         redirect: 'manual'
       });
-      if (!response.ok || response.redirected || response.type === 'opaqueredirect' || response.url !== source.href) {
+      if (!response.ok || response.redirected || response.type === 'opaqueredirect' || response.url !== requestURL.href) {
         throw new Error('Source response rejected');
       }
 
@@ -107,8 +144,7 @@
       if (declaredSize !== null && (!/^\d+$/.test(declaredSize) || Number(declaredSize) > LIMITS.compressedBytes)) {
         throw new Error('Compressed size limit exceeded');
       }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!bytes.byteLength || bytes.byteLength > LIMITS.compressedBytes) throw new Error('Compressed size limit exceeded');
+      const bytes = await readBoundedSource(response);
       zip.configure({ useWebWorkers: false });
       const reader = new zip.ZipReader(new zip.Uint8ArrayReader(bytes));
       try {
@@ -117,9 +153,16 @@
         const entriesByName = new Map(entries.map(entry => [entry.filename, entry]));
         const requiredNames = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml'];
         if (!requiredNames.every(name => entriesByName.has(name))) throw new Error('Missing OOXML member');
+        const requiredNameSet = new Set(requiredNames);
         const files = new Map();
-        for (const name of requiredNames) {
-          files.set(name, await readXMLMember(entriesByName.get(name)));
+        const expandedState = { byteCount: 0 };
+        for (const entry of entries) {
+          if (entry.directory) continue;
+          const retain = requiredNameSet.has(entry.filename);
+          const xmlMember = /(?:\.xml|\.rels)$/i.test(entry.filename);
+          const contents = await readArchiveMember(entry, retain || xmlMember, expandedState);
+          if (xmlMember) parseXMLDocument(contents);
+          if (retain) files.set(entry.filename, contents);
         }
         validatePackageXML(files);
       } finally {

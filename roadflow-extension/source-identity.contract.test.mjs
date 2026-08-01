@@ -50,6 +50,19 @@ async function docx(entries = {}) {
 const sourceBytes = await docx();
 const fetches = [];
 let nextResponse;
+function responseBody(chunks) {
+  let index = 0;
+  return {
+    getReader() {
+      return {
+        async read() {
+          return index < chunks.length ? { done: false, value: chunks[index++] } : { done: true };
+        },
+        async cancel() {}
+      };
+    }
+  };
+}
 function sourceResponse(bytes = sourceBytes, overrides = {}) {
   return {
     ok: true,
@@ -58,7 +71,8 @@ function sourceResponse(bytes = sourceBytes, overrides = {}) {
     redirected: false,
     url: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
     headers: { get() { return String(bytes.byteLength); } },
-    async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); },
+    body: responseBody([bytes]),
+    async arrayBuffer() { throw new Error('source body was not streamed'); },
     ...overrides
   };
 }
@@ -69,6 +83,7 @@ globalThis.fetch = async (url, options) => {
   return response;
 };
 
+vm.runInThisContext(await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8'), { filename: 'source-identity-contract.js' });
 vm.runInThisContext(await readFile(new URL('./source-identity.js', import.meta.url), 'utf8'), { filename: 'source-identity.js' });
 
 const sourceURL = 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1';
@@ -101,6 +116,11 @@ nextResponse = sourceResponse(await docx({
 }));
 assert.equal((await RoadFlowSourceIdentity.derive(sourceURL, 'docx')).ok, true);
 
+const fragmentURL = `${sourceURL}#section`;
+nextResponse = sourceResponse(sourceBytes);
+assert.equal((await RoadFlowSourceIdentity.derive(fragmentURL, 'docx')).ok, true);
+assert.equal(fetches.at(-1).url, sourceURL);
+
 const failure = { ok: false, message: 'Document verification failed. Editing was not opened.' };
 for (const response of [
   sourceResponse(sourceBytes, { ok: false, status: 401 }),
@@ -119,7 +139,13 @@ assert.equal(fetches.length, fetchCountBeforeFormatMismatch);
 
 nextResponse = sourceResponse(sourceBytes, {
   headers: { get() { return String(25 * 1024 * 1024 + 1); } },
-  async arrayBuffer() { throw new Error('oversized response body was read'); }
+  body: { getReader() { throw new Error('oversized response body was read'); } }
+});
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
+
+nextResponse = sourceResponse(sourceBytes, {
+  headers: { get() { return '1'; } },
+  body: responseBody([new Uint8Array(25 * 1024 * 1024 + 1)])
 });
 assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
 
@@ -139,6 +165,30 @@ function inflatedMetadata(bytes, uncompressedSize) {
   }
   return copy;
 }
+
+function corruptMember(bytes, filename) {
+  const copy = Uint8Array.from(bytes);
+  const view = new DataView(copy.buffer);
+  const decoder = new TextDecoder();
+  for (let offset = 0; offset <= copy.length - 30; offset += 1) {
+    if (view.getUint32(offset, true) !== 0x04034b50) continue;
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const name = decoder.decode(copy.subarray(offset + 30, offset + 30 + nameLength));
+    if (name === filename) {
+      copy[offset + 30 + nameLength + extraLength] ^= 0xff;
+      return copy;
+    }
+  }
+  throw new Error(`ZIP member not found: ${filename}`);
+}
+
+const docxWithExtraMember = await docx({ 'custom/data.bin': 'checksum protected content' });
+nextResponse = sourceResponse(corruptMember(docxWithExtraMember, 'custom/data.bin'));
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
+
+nextResponse = sourceResponse(await docx({ 'word/styles.xml': '<styles><malformed></styles>' }));
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
 
 nextResponse = sourceResponse(inflatedMetadata(sourceBytes, 1024 * 1024));
 assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);

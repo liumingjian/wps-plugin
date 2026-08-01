@@ -1,6 +1,7 @@
 'use strict';
 
 let configuration;
+const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
 
 chrome.runtime.sendMessage({ type: 'configuration' }).then(response => {
   if (response?.ok) configuration = response.configuration;
@@ -14,21 +15,42 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 async function enterPackagedEditor(source, title) {
   const expectedFormat = /\.docx$/i.test(source.pathname) ? 'docx' : 'doc';
-  const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
-  if (!identityResult.ok) {
-    window.alert(identityResult.message);
-    return;
+  let sourceIdentity;
+  if (expectedFormat === 'docx') {
+    const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
+    if (!identityResult.ok) {
+      window.alert(identityResult.message);
+      return;
+    }
+    sourceIdentity = identityResult.identity;
+  } else {
+    const response = await fetch(source.href, {
+      cache: 'no-store',
+      credentials: 'include',
+      redirect: 'manual'
+    });
+    if (response.redirected || response.type === 'opaqueredirect' ||
+        (response.status >= 300 && response.status < 400)) {
+      try { await response.body?.cancel(); } catch {}
+      location.assign(source.href);
+      return;
+    }
   }
+  const activation = {
+    returnURL: location.href,
+    sourceURL: source.href,
+    title
+  };
+  if (sourceIdentity) activation.sourceIdentity = sourceIdentity;
   const response = await chrome.runtime.sendMessage({
     type: 'create-editor-handoff',
-    activation: {
-      returnURL: location.href,
-      sourceURL: source.href,
-      title,
-      sourceIdentity: identityResult.identity
-    }
+    activation
   });
-  if (response?.ok) location.replace(response.editorURL);
+  if (response?.ok) {
+    location.replace(response.editorURL);
+  } else {
+    window.alert(VERIFICATION_FAILURE_MESSAGE);
+  }
 }
 
 window.addEventListener('click', event => {
@@ -50,5 +72,6 @@ window.addEventListener('click', event => {
       !/\.docx?$/i.test(source.pathname)) return;
 
   event.preventDefault();
-  void enterPackagedEditor(source, anchor.textContent.trim()).catch(() => {});
+  void enterPackagedEditor(source, anchor.textContent.trim())
+    .catch(() => window.alert(VERIFICATION_FAILURE_MESSAGE));
 }, false);

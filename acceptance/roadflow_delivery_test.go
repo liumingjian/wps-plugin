@@ -62,7 +62,7 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		t.Fatalf("RoadFlow packaged entry points = %+v", manifest)
 	}
 	if len(manifest.ContentScripts) != 1 || strings.Join(manifest.ContentScripts[0].Matches, ",") != "http://*/*,https://*/*" ||
-		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
+		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
 		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
 	}
 	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html" ||
@@ -73,7 +73,7 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	for _, name := range []string{
 		"configuration.js", "content.js", "editor.css", "editor.html", "editor.js",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
-		"readiness.js", "service-worker.js", "source-identity.js", "zip-core.min.js", "zip-js.LICENSE",
+		"readiness.js", "service-worker.js", "source-identity-contract.js", "source-identity.js", "zip-core.min.js", "zip-js.LICENSE",
 	} {
 		if _, err := os.Stat(filepath.Join(extensionRoot, name)); err != nil {
 			t.Errorf("staged RoadFlow asset %s: %v", name, err)

@@ -18,6 +18,8 @@ let nextIdentityResult = {
 const messages = [];
 const identityRequests = [];
 const alerts = [];
+const docFetches = [];
+let handoffResponse = { ok: true, editorURL: 'chrome-extension://fixed/editor.html?handoff=opaque-id' };
 
 globalThis.RoadFlowSourceIdentity = {
   async derive(sourceURL, expectedFormat) {
@@ -35,7 +37,8 @@ globalThis.chrome = {
       if (message.type === 'configuration') {
         return { ok: true, configuration: { trustedOrigin: 'https://oa.example.test' } };
       }
-      return { ok: true, editorURL: 'chrome-extension://fixed/editor.html?handoff=opaque-id' };
+      if (handoffResponse instanceof Error) throw handoffResponse;
+      return handoffResponse;
     }
   },
   storage: {
@@ -54,6 +57,10 @@ globalThis.location = {
   href: 'https://oa.example.test/workflow/current?step=review#document',
   origin: 'https://oa.example.test',
   replace(url) { replacementURL = url; }
+};
+globalThis.fetch = async (url, options) => {
+  docFetches.push({ url, options });
+  return { ok: true, status: 200, type: 'basic', redirected: false, url, body: { async cancel() {} } };
 };
 
 vm.runInThisContext(await readFile(new URL('./content.js', import.meta.url), 'utf8'), { filename: 'content.js' });
@@ -99,6 +106,35 @@ assert.deepEqual(messages, [
   }
 ]);
 assert.equal(replacementURL, 'chrome-extension://fixed/editor.html?handoff=opaque-id');
+
+const docMessageCount = messages.length;
+clickListener({
+  isTrusted: true,
+  button: 0,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+  defaultPrevented: false,
+  preventDefault() {},
+  target: {
+    closest() { return { href: 'https://oa.example.test/documents/Legacy.DOC', textContent: 'Legacy Document' }; }
+  }
+});
+await new Promise(resolve => setImmediate(resolve));
+assert.deepEqual(docFetches, [{
+  url: 'https://oa.example.test/documents/Legacy.DOC',
+  options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
+}]);
+assert.deepEqual(messages.at(-1), {
+  type: 'create-editor-handoff',
+  activation: {
+    returnURL: 'https://oa.example.test/workflow/current?step=review#document',
+    sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+    title: 'Legacy Document'
+  }
+});
+assert.equal(messages.length, docMessageCount + 1);
 
 for (const activation of [
   { isTrusted: false, href: 'https://oa.example.test/documents/report.docx' },
@@ -154,6 +190,28 @@ assert.equal(failurePrevented, true);
 assert.equal(replacementURL, undefined);
 assert.equal(messages.length, failureMessageCount);
 assert.deepEqual(alerts, ['Document verification failed. Editing was not opened.']);
+
+nextIdentityResult = { ok: true, identity: validIdentity };
+handoffResponse = { ok: false };
+clickListener({
+  isTrusted: true,
+  button: 0,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+  defaultPrevented: false,
+  preventDefault() {},
+  target: {
+    closest() { return { href: 'https://oa.example.test/documents/Quarterly%20Report.DOCX', textContent: 'Document' }; }
+  }
+});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(replacementURL, undefined);
+assert.deepEqual(alerts, [
+  'Document verification failed. Editing was not opened.',
+  'Document verification failed. Editing was not opened.'
+]);
 
 storageListener({
   roadFlowIntegration: {

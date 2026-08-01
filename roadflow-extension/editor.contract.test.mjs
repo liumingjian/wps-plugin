@@ -3,9 +3,11 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const html = await readFile(new URL('./editor.html', import.meta.url), 'utf8');
+const identityContract = await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8');
 const script = await readFile(new URL('./editor.js', import.meta.url), 'utf8');
 assert.doesNotMatch(html, /<object\b|application\/x-wps/i);
 assert.match(html, /<script src="editor\.js"><\/script>/);
+assert.match(html, /<script src="source-identity-contract\.js"><\/script>\s*<script src="editor\.js"><\/script>/);
 
 const handoffID = 'a'.repeat(64);
 const handoff = {
@@ -66,6 +68,7 @@ async function loadEditor(search, consumeResponse) {
       replace(url) { replacementURL = url; }
     }
   });
+  vm.runInContext(identityContract, context, { filename: 'source-identity-contract.js' });
   vm.runInContext(script, context, { filename: 'editor.js' });
   await new Promise(resolve => setImmediate(resolve));
   return { createdElements, elements, messages, replacementURL: () => replacementURL };
@@ -84,6 +87,19 @@ assert.equal(valid.elements['source-label'].textContent, '/documents/Quarterly%2
 assert.equal(valid.elements['return-to-oa'].disabled, false);
 valid.elements['return-to-oa'].clickListener();
 assert.equal(valid.replacementURL(), handoff.returnURL);
+
+const legacyDoc = await loadEditor(`?handoff=${handoffID}`, {
+  ok: true,
+  handoff: {
+    ...handoff,
+    sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+    sourcePath: '/documents/Legacy.DOC',
+    filename: 'Legacy.DOC',
+    expectedFormat: 'doc',
+    sourceIdentity: undefined
+  }
+});
+assert.equal(legacyDoc.createdElements.length, 1);
 
 for (const [search, response, expectedMessages] of [
   ['', undefined, []],
