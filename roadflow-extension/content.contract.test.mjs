@@ -5,10 +5,28 @@ import vm from 'node:vm';
 let clickListener;
 let storageListener;
 let replacementURL;
-let assignedURL;
-let nextResponseType = 'basic';
+const validIdentity = {
+  sourcePath: '/documents/Quarterly%20Report.DOCX',
+  actualFormat: 'docx',
+  byteCount: 4096,
+  sha256: 'a'.repeat(64)
+};
+let nextIdentityResult = {
+  ok: true,
+  identity: validIdentity
+};
 const messages = [];
-const fetches = [];
+const identityRequests = [];
+const alerts = [];
+
+globalThis.RoadFlowSourceIdentity = {
+  async derive(sourceURL, expectedFormat) {
+    identityRequests.push({ sourceURL, expectedFormat });
+    const result = nextIdentityResult;
+    nextIdentityResult = { ...nextIdentityResult, ok: true };
+    return result;
+  }
+};
 
 globalThis.chrome = {
   runtime: {
@@ -29,22 +47,12 @@ globalThis.window = {
     assert.equal(type, 'click');
     assert.equal(capture, false);
     clickListener = listener;
-  }
-};
-globalThis.fetch = async (url, options) => {
-  fetches.push({ url, options });
-  const type = nextResponseType;
-  nextResponseType = 'basic';
-  return {
-    type,
-    status: type === 'opaqueredirect' ? 0 : 200,
-    body: { async cancel() {} }
-  };
+  },
+  alert(message) { alerts.push(message); }
 };
 globalThis.location = {
   href: 'https://oa.example.test/workflow/current?step=review#document',
   origin: 'https://oa.example.test',
-  assign(url) { assignedURL = url; },
   replace(url) { replacementURL = url; }
 };
 
@@ -74,9 +82,9 @@ clickListener({
 await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(prevented, true);
-assert.deepEqual(fetches, [{
-  url: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
-  options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
+assert.deepEqual(identityRequests, [{
+  sourceURL: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
+  expectedFormat: 'docx'
 }]);
 assert.deepEqual(messages, [
   { type: 'configuration' },
@@ -85,7 +93,8 @@ assert.deepEqual(messages, [
     activation: {
       returnURL: 'https://oa.example.test/workflow/current?step=review#document',
       sourceURL: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
-      title: 'Quarterly Report'
+      title: 'Quarterly Report',
+      sourceIdentity: validIdentity
     }
   }
 ]);
@@ -103,7 +112,7 @@ for (const activation of [
 ]) {
   let passThroughPrevented = false;
   const messageCount = messages.length;
-  const fetchCount = fetches.length;
+  const identityRequestCount = identityRequests.length;
   clickListener({
     isTrusted: activation.isTrusted ?? true,
     button: activation.button ?? 0,
@@ -120,12 +129,13 @@ for (const activation of [
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(passThroughPrevented, false, `prevented ${activation.href}`);
   assert.equal(messages.length, messageCount, `created handoff for ${activation.href}`);
-  assert.equal(fetches.length, fetchCount, `probed ${activation.href}`);
+  assert.equal(identityRequests.length, identityRequestCount, `validated ${activation.href}`);
 }
 
-nextResponseType = 'opaqueredirect';
-let redirectPrevented = false;
-const redirectMessageCount = messages.length;
+nextIdentityResult = { ok: false, message: 'Document verification failed. Editing was not opened.' };
+replacementURL = undefined;
+let failurePrevented = false;
+const failureMessageCount = messages.length;
 clickListener({
   isTrusted: true,
   button: 0,
@@ -134,15 +144,16 @@ clickListener({
   metaKey: false,
   shiftKey: false,
   defaultPrevented: false,
-  preventDefault() { redirectPrevented = true; },
+  preventDefault() { failurePrevented = true; },
   target: {
     closest() { return { href: 'https://oa.example.test/documents/redirected.docx', textContent: 'Document' }; }
   }
 });
 await new Promise(resolve => setImmediate(resolve));
-assert.equal(redirectPrevented, true);
-assert.equal(assignedURL, 'https://oa.example.test/documents/redirected.docx');
-assert.equal(messages.length, redirectMessageCount);
+assert.equal(failurePrevented, true);
+assert.equal(replacementURL, undefined);
+assert.equal(messages.length, failureMessageCount);
+assert.deepEqual(alerts, ['Document verification failed. Editing was not opened.']);
 
 storageListener({
   roadFlowIntegration: {

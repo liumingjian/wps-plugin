@@ -62,7 +62,13 @@ const returnURL = 'https://oa.example.test/workflow/current?step=review#document
 const activation = {
   returnURL,
   sourceURL: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
-  title: 'Quarterly Report'
+  title: 'Quarterly Report',
+  sourceIdentity: {
+    sourcePath: '/documents/Quarterly%20Report.DOCX',
+    actualFormat: 'docx',
+    byteCount: 4096,
+    sha256: 'a'.repeat(64)
+  }
 };
 const configurationResponse = await new Promise(resolve => {
   messageListener({ type: 'configuration' }, { url: returnURL, tab: { id: 7 } }, resolve);
@@ -102,12 +108,30 @@ assert.deepEqual(successful[0].handoff, {
   title: 'Quarterly Report',
   filename: 'Quarterly Report.DOCX',
   expectedFormat: 'docx',
+  sourceIdentity: activation.sourceIdentity,
   cacheIdentity: successful[0].handoff.cacheIdentity,
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
 });
 assert.match(successful[0].handoff.cacheIdentity, /^[a-f0-9]{32}$/);
 assert.deepEqual(await consume(), { ok: false });
+
+for (const sourceIdentity of [
+  undefined,
+  { ...activation.sourceIdentity, sourcePath: '/documents/Another.docx' },
+  { ...activation.sourceIdentity, actualFormat: 'doc' },
+  { ...activation.sourceIdentity, byteCount: 0 },
+  { ...activation.sourceIdentity, sha256: 'not-a-digest' }
+]) {
+  const rejectedIdentity = await new Promise(resolve => {
+    messageListener(
+      { type: 'create-editor-handoff', activation: { ...activation, sourceIdentity } },
+      { url: returnURL, tab: { id: 7 } },
+      resolve
+    );
+  });
+  assert.deepEqual(rejectedIdentity, { ok: false });
+}
 
 const malformed = await new Promise(resolve => {
   messageListener(

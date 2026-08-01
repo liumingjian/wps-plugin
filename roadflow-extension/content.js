@@ -12,26 +12,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   configuration = trustedOrigin === location.origin ? { trustedOrigin } : undefined;
 });
 
-async function redirects(sourceURL) {
-  let response;
-  try {
-    response = await fetch(sourceURL, {
-      cache: 'no-store',
-      credentials: 'include',
-      redirect: 'manual'
-    });
-  } catch {
-    return false;
-  }
-  const redirected = response.type === 'opaqueredirect' ||
-    (response.status >= 300 && response.status < 400);
-  try { await response.body?.cancel(); } catch {}
-  return redirected;
-}
-
 async function enterPackagedEditor(source, title) {
-  if (await redirects(source.href)) {
-    location.assign(source.href);
+  const expectedFormat = /\.docx$/i.test(source.pathname) ? 'docx' : 'doc';
+  const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
+  if (!identityResult.ok) {
+    window.alert(identityResult.message);
     return;
   }
   const response = await chrome.runtime.sendMessage({
@@ -39,7 +24,8 @@ async function enterPackagedEditor(source, title) {
     activation: {
       returnURL: location.href,
       sourceURL: source.href,
-      title
+      title,
+      sourceIdentity: identityResult.identity
     }
   });
   if (response?.ok) location.replace(response.editorURL);

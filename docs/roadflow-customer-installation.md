@@ -39,6 +39,22 @@ and reachable only on the trusted office network. It must not convert, retain,
 or modify the Document. Gateway Delivery Receipt behavior is configured with the full
 Document Identity Gate integration rather than by this CRX packaging step.
 
+## DOCX source validation policy
+
+Before an Editor Handoff is issued, the extension reads the exact same-Origin
+DOCX source with the current OA browser session and rejects redirects and
+non-success responses. The packaged parser is `@zip.js/zip.js 2.8.34`; its
+BSD-3-Clause license is included as `zip-js.LICENSE`.
+
+Validation permits at most 25 MiB of compressed source data, 2,048 archive members,
+a 100:1 aggregate expansion ratio, and 100 MiB of aggregate
+uncompressed data. The limits are checked from ZIP central-directory metadata
+before any OOXML member is expanded. The required content-types, package
+relationship, and main WordprocessingML Document parts must be well-formed and
+consistent with a DOCX path. Only the exact source path, actual format, byte
+count, and SHA-256 identity are placed in session-scoped Editor Handoff state;
+the source Document bytes are not retained.
+
 ## Check readiness
 
 Select the extension toolbar icon after configuration. The popup reports one of

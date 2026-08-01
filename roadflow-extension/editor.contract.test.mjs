@@ -16,6 +16,12 @@ const handoff = {
   title: 'Quarterly Report',
   filename: 'Quarterly Report.DOCX',
   expectedFormat: 'docx',
+  sourceIdentity: {
+    sourcePath: '/documents/Quarterly%20Report.DOCX',
+    actualFormat: 'docx',
+    byteCount: 4096,
+    sha256: 'a'.repeat(64)
+  },
   cacheIdentity: 'b'.repeat(32),
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
@@ -87,6 +93,10 @@ for (const [search, response, expectedMessages] of [
   [`?handoff=${handoffID}`, {
     ok: true,
     handoff: { ...handoff, sourcePath: '/documents/Another%20Report.DOCX' }
+  }, [{ type: 'consume-editor-handoff', handoffID }]],
+  [`?handoff=${handoffID}`, {
+    ok: true,
+    handoff: { ...handoff, sourceIdentity: { ...handoff.sourceIdentity, sha256: 'invalid' } }
   }, [{ type: 'consume-editor-handoff', handoffID }]]
 ]) {
   const rejected = await loadEditor(search, response);

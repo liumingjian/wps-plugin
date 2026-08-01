@@ -49,6 +49,18 @@ function editorSender(sender) {
   }
 }
 
+function validatedSourceIdentity(value, sourcePath, expectedFormat) {
+  if (!value || value.sourcePath !== sourcePath || value.actualFormat !== expectedFormat ||
+      !Number.isSafeInteger(value.byteCount) || value.byteCount <= 0 || value.byteCount > 25 * 1024 * 1024 ||
+      !/^[a-f0-9]{64}$/.test(value.sha256 || '')) return undefined;
+  return {
+    sourcePath: value.sourcePath,
+    actualFormat: value.actualFormat,
+    byteCount: value.byteCount,
+    sha256: value.sha256
+  };
+}
+
 async function createEditorHandoff(activation, sender) {
   const configuration = await configuredIntegration();
   if (!configuration || !sender?.tab || sender.url !== activation?.returnURL ||
@@ -70,6 +82,9 @@ async function createEditorHandoff(activation, sender) {
   const title = typeof activation.title === 'string' && activation.title.trim()
     ? activation.title.trim().slice(0, 256)
     : filename;
+  const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
+  const sourceIdentity = validatedSourceIdentity(activation.sourceIdentity, sourcePath, expectedFormat);
+  if (!sourceIdentity) return { ok: false };
   const createdAt = Date.now();
   return serializedHandoffOperation(async () => {
     const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
@@ -86,7 +101,8 @@ async function createEditorHandoff(activation, sender) {
       sourcePath,
       title,
       filename,
-      expectedFormat: /\.docx$/i.test(sourcePath) ? 'docx' : 'doc',
+      expectedFormat,
+      sourceIdentity,
       cacheIdentity: randomHex(16),
       createdAt,
       expiresAt: createdAt + HANDOFF_TTL_MS

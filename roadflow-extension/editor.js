@@ -12,10 +12,14 @@ function showUnavailableEditor() {
 }
 
 function validatedHandoff(value) {
+  const identity = value?.sourceIdentity;
   if (!value || typeof value.returnURL !== 'string' || typeof value.trustedOrigin !== 'string' ||
       typeof value.sourceURL !== 'string' || typeof value.sourcePath !== 'string' ||
       typeof value.title !== 'string' || typeof value.filename !== 'string' ||
       !['doc', 'docx'].includes(value.expectedFormat) || !/^[a-f0-9]{32}$/.test(value.cacheIdentity || '') ||
+      !identity || identity.sourcePath !== value.sourcePath || identity.actualFormat !== value.expectedFormat ||
+      !Number.isSafeInteger(identity.byteCount) || identity.byteCount <= 0 || identity.byteCount > 25 * 1024 * 1024 ||
+      !/^[a-f0-9]{64}$/.test(identity.sha256 || '') ||
       !Number.isFinite(value.createdAt) || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now()) return undefined;
   try {
     const returnURL = new URL(value.returnURL);

@@ -9,7 +9,7 @@
   "background": { "service_worker": "service-worker.js" },
   "content_scripts": [{
     "matches": ["http://*/*", "https://*/*"],
-    "js": ["content.js"],
+    "js": ["zip-core.min.js", "source-identity.js", "content.js"],
     "run_at": "document_start"
   }],
   "web_accessible_resources": [{
