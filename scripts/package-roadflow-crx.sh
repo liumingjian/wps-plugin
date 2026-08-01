@@ -3,36 +3,13 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 version=${VERSION:-1.0.0}
-output=${OUTPUT:-"$repo/dist/release/roadflow-wps-editor-$version.crx"}
-release_key=${CRX_RELEASE_KEY:-"$HOME/.local/share/wps-plugin-release/crx-release.pem"}
-qaxbrowser=${QAXBROWSER:-/opt/qianxin.com/qaxbrowser/qaxbrowser}
-expected_fingerprint=c99e0f4e735a4fce2f0718ccc4db53212f46b8813604975be5cf3781d2d7c016
+export PACKAGE_NAME="RoadFlow WPS Editor"
+export VERSION="$version"
+export OUTPUT=${OUTPUT:-"$repo/dist/release/roadflow-wps-editor-$version.crx"}
+export RELEASE_KEY=${ROADFLOW_CRX_RELEASE_KEY:-"$HOME/.local/share/wps-plugin-release/roadflow-crx-release.pem"}
+export QAXBROWSER=${QAXBROWSER:-/opt/qianxin.com/qaxbrowser/qaxbrowser}
+export EXPECTED_KEY_FINGERPRINT=1e997816a7ad224f01ae939e377639538097d1907943acf908bdbba61abf3257
+export FIXED_EXTENSION_ID=bojjhibgkhknccepabkojdjodhhgdjfd
+export STAGE_EXTENSION_SCRIPT="$repo/scripts/stage-roadflow-extension.sh"
 
-if [[ ! -f "$release_key" || ! -x "$qaxbrowser" ]]; then
-  printf 'The supplier release key and designated Qaxbrowser are required.\n' >&2
-  exit 2
-fi
-if [[ -e "$output" ]]; then
-  printf 'Refusing to overwrite CRX: %s\n' "$output" >&2
-  exit 2
-fi
-
-scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
-chmod 0700 "$scratch"
-printf 'Unlock the supplier CRX release key. OpenSSL reads the passphrase directly.\n'
-openssl pkey -in "$release_key" -out "$scratch/release.pem"
-chmod 0600 "$scratch/release.pem"
-fingerprint=$(openssl pkey -in "$scratch/release.pem" -pubout -outform DER | sha256sum | cut -d' ' -f1)
-if [[ "$fingerprint" != "$expected_fingerprint" ]]; then
-  printf 'Release key fingerprint does not match the fixed production identity.\n' >&2
-  exit 2
-fi
-
-OUTPUT="$scratch/extension" VERSION="$version" bash "$repo/scripts/stage-roadflow-extension.sh"
-mkdir -p "$(dirname "$output")" "$scratch/profile"
-"$qaxbrowser" --user-data-dir="$scratch/profile" --no-first-run --disable-gpu \
-  --pack-extension="$scratch/extension" --pack-extension-key="$scratch/release.pem"
-install -m 0644 "$scratch/extension.crx" "$output"
-sha256sum "$output"
-printf 'Fixed extension ID: mjjoapeohdfkepmocpahbimmmenlfdcb\n'
+exec bash "$repo/scripts/package-fixed-id-crx.sh"

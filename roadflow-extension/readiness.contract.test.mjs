@@ -10,10 +10,9 @@ const validConfiguration = {
   gatewayTemplate: 'https://gateway.example.test/wps?fileurl={sourcePath}'
 };
 const cases = [
-  [{}, { wpsInstalled: true, npapiAvailable: true }, 'missing-configuration', 'Open extension settings'],
-  [validConfiguration, { wpsInstalled: false, npapiAvailable: false }, 'wps-unavailable', 'Install the designated WPS'],
-  [validConfiguration, { wpsInstalled: true, npapiAvailable: false }, 'npapi-unavailable', 'Enable the WPS browser plugin'],
-  [validConfiguration, { wpsInstalled: true, npapiAvailable: true }, 'ready', 'ready for RoadFlow']
+  [{}, { npapiAvailable: true }, 'missing-configuration', 'Open extension settings'],
+  [validConfiguration, { npapiAvailable: false }, 'wps-npapi-unavailable', 'Verify the designated WPS installation'],
+  [validConfiguration, { npapiAvailable: true }, 'ready', 'ready for RoadFlow']
 ];
 for (const [configuration, environment, state, guidance] of cases) {
   const result = RoadFlowReadiness.evaluate(configuration, environment);
@@ -28,8 +27,8 @@ const targetEnvironment = RoadFlowReadiness.detectEnvironment(
     mimeTypes: { namedItem(type) { return type === 'application/x-wps' ? { type } : undefined; } }
   }
 );
-assert.deepEqual(targetEnvironment, { wpsInstalled: true, npapiAvailable: true });
+assert.deepEqual(targetEnvironment, { npapiAvailable: true });
 assert.deepEqual(RoadFlowReadiness.detectEnvironment(
   { Application: null },
   { plugins: [{ name: 'Kingsoft WPS Plugin' }], mimeTypes: { namedItem() { return {}; } } }
-), { wpsInstalled: true, npapiAvailable: false });
+), { npapiAvailable: false });

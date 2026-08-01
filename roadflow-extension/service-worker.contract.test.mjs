@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 let messageListener;
 let stored = {};
-const extensionOrigin = 'chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb';
+const extensionOrigin = 'chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd';
 
 globalThis.chrome = {
   runtime: {

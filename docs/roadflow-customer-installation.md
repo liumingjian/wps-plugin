@@ -2,7 +2,8 @@
 
 This delivery is the browser-hosted RoadFlow route. Install the supplier-signed
 `roadflow-wps-editor-<version>.crx` in the designated Qaxbrowser profile. Its
-fixed extension ID is `mjjoapeohdfkepmocpahbimmmenlfdcb`.
+fixed extension ID is `bojjhibgkhknccepabkojdjodhhgdjfd`. This is separate
+from the historical extension identity, so both routes can coexist in one profile.
 
 No DEB, root access, background service, product middleware, or separate local
 installation is part of this route. The historical Local WPS Editing extension
@@ -41,13 +42,11 @@ Document Identity Gate integration rather than by this CRX packaging step.
 ## Check readiness
 
 Select the extension toolbar icon after configuration. The popup reports one of
-four states:
+three states:
 
 - **Configuration required**: open settings and save both required values.
-- **WPS unavailable**: install the designated WPS build with its browser
-  component, then restart Qaxbrowser.
-- **WPS browser plugin unavailable**: enable the WPS browser plugin and NPAPI
-  support in Qaxbrowser, then restart the browser.
+- **WPS or browser plugin unavailable**: verify the designated WPS installation,
+  enable its browser plugin and NPAPI support in Qaxbrowser, then restart the browser.
 - **Environment ready**: the profile configuration and native editor surface
   are available for the RoadFlow route.
 
@@ -67,5 +66,5 @@ The signed release requires the supplier-held encrypted key and the designated
 Qaxbrowser packer:
 
 ```sh
-CRX_RELEASE_KEY=/secure/crx-release.pem bash ./scripts/package-roadflow-crx.sh
+ROADFLOW_CRX_RELEASE_KEY=/secure/roadflow-crx-release.pem bash ./scripts/package-roadflow-crx.sh
 ```

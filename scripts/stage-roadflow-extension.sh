@@ -20,7 +20,7 @@ if [[ -e "$output" ]]; then
 fi
 
 mkdir -p "$output"
-for file in configuration.js content.js editor.css editor.html editor.js options.css options.html options.js readiness.html readiness.js service-worker.js; do
+for file in configuration.js editor.css editor.html options.css options.html options.js readiness.html readiness.js service-worker.js; do
   install -m 0644 "$repo/roadflow-extension/$file" "$output/$file"
 done
 sed -E "s/\"version\": \"[^\"]+\"/\"version\": \"$version\"/" "$repo/roadflow-extension/manifest.json" >"$output/manifest.json"
@@ -30,4 +30,4 @@ chmod 0644 "$output/icon.png"
 touch --date="@$source_date_epoch" "$output"/* "$output"
 
 printf 'Staged RoadFlow WPS Editor %s: %s\n' "$version" "$output"
-printf 'Fixed extension ID: mjjoapeohdfkepmocpahbimmmenlfdcb\n'
+printf 'Fixed extension ID: bojjhibgkhknccepabkojdjodhhgdjfd\n'

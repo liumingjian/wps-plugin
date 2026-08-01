@@ -8,39 +8,32 @@ function evaluate(configuration, environment) {
       guidance: 'Open extension settings and save one Trusted OA Origin and one Gateway URL template.'
     });
   }
-  if (!environment.wpsInstalled) {
-    return Object.freeze({
-      state: 'wps-unavailable',
-      title: 'WPS unavailable',
-      guidance: 'Install the designated WPS build with its browser component, then restart Qaxbrowser.'
-    });
-  }
   if (!environment.npapiAvailable) {
     return Object.freeze({
-      state: 'npapi-unavailable',
-      title: 'WPS browser plugin unavailable',
-      guidance: 'Enable the WPS browser plugin and NPAPI support in Qaxbrowser, then restart the browser.'
+      state: 'wps-npapi-unavailable',
+      title: 'WPS or browser plugin unavailable',
+      guidance: 'Verify the designated WPS installation and enable its browser plugin and NPAPI support in Qaxbrowser, then restart the browser.'
     });
   }
   return Object.freeze({
     state: 'ready',
     title: 'Environment ready',
-    guidance: 'This browser profile is ready for RoadFlow Word editing.'
+    guidance: 'This browser profile is ready for RoadFlow Document editing.'
   });
 }
 
 function detectEnvironment(wpsObject, browserNavigator) {
   const plugins = Array.from(browserNavigator?.plugins || []);
   const mimeType = browserNavigator?.mimeTypes?.namedItem?.('application/x-wps');
-  const wpsInstalled = Boolean(mimeType || plugins.some(plugin => /wps|kingsoft/i.test(plugin.name || '')));
+  const pluginAdvertised = Boolean(mimeType || plugins.some(plugin => /wps|kingsoft/i.test(plugin.name || '')));
   let application;
   try {
     application = wpsObject?.Application;
   } catch {
     // A blocked plugin object can throw while exposing its automation API.
   }
-  const npapiAvailable = Boolean(application) && ['function', 'object'].includes(typeof application);
-  return Object.freeze({ wpsInstalled, npapiAvailable });
+  const npapiAvailable = pluginAdvertised && Boolean(application) && ['function', 'object'].includes(typeof application);
+  return Object.freeze({ npapiAvailable });
 }
 
 globalThis.RoadFlowReadiness = Object.freeze({ detectEnvironment, evaluate });
@@ -56,7 +49,7 @@ if (typeof document !== 'undefined') {
 
   chrome.storage.local.get(RoadFlowConfiguration.STORAGE_KEY).then(async stored => {
     let environment = detectEnvironment(probe, navigator);
-    for (let attempt = 0; environment.wpsInstalled && !environment.npapiAvailable && attempt < 20; attempt += 1) {
+    for (let attempt = 0; !environment.npapiAvailable && attempt < 20; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 250));
       environment = detectEnvironment(probe, navigator);
     }

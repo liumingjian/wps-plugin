@@ -10,6 +10,8 @@ import (
 	"testing"
 )
 
+const roadFlowExtensionID = "bojjhibgkhknccepabkojdjodhhgdjfd"
+
 func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	repo := repoRoot(t)
 	root := t.TempDir()
@@ -37,7 +39,8 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Name != "RoadFlow WPS Editor" || manifest.Version != "1.0.0" || extensionIDFromKey(t, manifest.Key) != productionExtensionID {
+	computedRoadFlowID := extensionIDFromKey(t, manifest.Key)
+	if manifest.Name != "RoadFlow WPS Editor" || manifest.Version != "1.0.0" || computedRoadFlowID != roadFlowExtensionID || computedRoadFlowID == productionExtensionID {
 		t.Fatalf("RoadFlow manifest identity = %+v", manifest)
 	}
 	if strings.Join(manifest.Permissions, ",") != "storage" {
@@ -51,12 +54,17 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	}
 
 	for _, name := range []string{
-		"configuration.js", "content.js", "editor.css", "editor.html", "editor.js",
+		"configuration.js", "editor.css", "editor.html",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
 		"readiness.js", "service-worker.js",
 	} {
 		if _, err := os.Stat(filepath.Join(extensionRoot, name)); err != nil {
 			t.Errorf("staged RoadFlow asset %s: %v", name, err)
+		}
+	}
+	for _, name := range []string{"content.js", "editor.js"} {
+		if _, err := os.Stat(filepath.Join(extensionRoot, name)); !os.IsNotExist(err) {
+			t.Errorf("deferred RoadFlow asset %s was staged: %v", name, err)
 		}
 	}
 
@@ -145,12 +153,16 @@ func extensionIDFromKey(t *testing.T, encodedKey string) string {
 func TestRoadFlowCRXPackagingAndCustomerGuidanceStayOnTheBrowserRoute(t *testing.T) {
 	repo := repoRoot(t)
 	assertContains(t, filepath.Join(repo, "scripts", "package-roadflow-crx.sh"), []string{
-		"CRX_RELEASE_KEY", "expected_fingerprint=c99e0f4e735a4fce2f0718ccc4db53212f46b8813604975be5cf3781d2d7c016",
-		"stage-roadflow-extension.sh", "--pack-extension", "mjjoapeohdfkepmocpahbimmmenlfdcb",
+		"ROADFLOW_CRX_RELEASE_KEY", "package-fixed-id-crx.sh", "stage-roadflow-extension.sh",
+		"1e997816a7ad224f01ae939e377639538097d1907943acf908bdbba61abf3257", roadFlowExtensionID,
 	})
+	assertContains(t, filepath.Join(repo, "scripts", "package-crx.sh"), []string{"package-fixed-id-crx.sh"})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-customer-installation.md"), []string{
 		"Trusted OA Origin", "Gateway URL template", "exactly one `{sourcePath}`", "without rebuilding",
-		"Configuration required", "WPS unavailable", "WPS browser plugin unavailable", "Environment ready",
+		"Configuration required", "WPS or browser plugin unavailable", "Environment ready",
 		"read-only", "byte-preserving", "trusted office network", "No DEB", "historical",
+	})
+	assertContains(t, filepath.Join(repo, "docs", "adr", "0006-use-browser-hosted-wps-for-roadflow.md"), []string{
+		"designated Kylin", "Qaxbrowser", "NPAPI", "RoadFlow", "ADR 0001", "ADR 0005", "separate extension identity",
 	})
 }
