@@ -1,0 +1,151 @@
+Gtk-Message: 18:54:53.741: Failed to load module "ukuireload-gtk-module"
+[671736:671736:0801/185453.799283:ERROR:browser:secure_dns_policy_wrapper.cc(31)] Parse StrategyExt error.
+
+DevTools listening on ws://127.0.0.1:49251/devtools/browser/d22369f1-733f-4cd2-b693-5588c608f2be
+libva error: vaGetDriverNameByIndex() failed with unknown libva error, driver_name = (null)
+[671775:671775:0801/185453.975276:ERROR:gpu-process:gpu_memory_buffer_support_x11.cc(44)] dri3 extension not supported.
+[671736:671736:0801/185454.049780:ERROR:browser:template_url_service.cc(2402)] default engine is same with prepopulated engine.
+Gtk-Message: 18:54:55.707: Failed to load module "ukuireload-gtk-module"
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672065): Gdk-WARNING **: 18:54:56.670: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7fa520f748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672232): Gdk-WARNING **: 18:55:06.850: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7f92a72748 (MsgWriter, ), timer has not been killed
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672303): Gdk-WARNING **: 18:55:11.059: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7f9d7d5748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672421): Gdk-WARNING **: 18:55:18.298: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7f8e703748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672502): Gdk-WARNING **: 18:55:22.361: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7f96d73748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672606): Gdk-WARNING **: 18:55:29.775: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7f8f819748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672691): Gdk-WARNING **: 18:55:33.885: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7fa0572748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+
+(wps:672796): Gdk-WARNING **: 18:55:41.095: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7fb672c748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+Attribute Qt::AA_DisableHighDpiScaling must be set before QCoreApplication is created.
+QObject::connect: No such slot QWidget::OnStartOffice()
+open file failed!!!: No such file or directory
+UNICODEMAP_JP is cp932
+
+(wps:672894): Gdk-WARNING **: 18:55:46.354: The GDK_NATIVE_WINDOWS environment variable is not supported in GTK3.
+See the documentation for gdk_window_ensure_native() on how to get native windows.
+_IceTransOpen: Unable to Parse address ""
+Qt: Session management error: Could not open network socket
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+QObject::killTimer(): Error: timer id -1 is not valid for object 0x7fb6b8f748 (MsgWriter, ), timer has not been killed
+QObject::killTimer: Timers cannot be stopped from another thread
+QObject::~QObject: Timers cannot be stopped from another thread
+UNICODEMAP_JP is cp932

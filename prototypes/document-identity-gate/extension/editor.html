@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document Identity Gate - Prototype</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <main class="editor-shell">
+    <header class="toolbar">
+      <div class="heading"><strong id="document-title">WPS Document Editor</strong><span id="status">身份验证尚未开始</span></div>
+      <button id="retry" type="button" disabled>重新验证</button>
+      <button id="save" class="primary" type="button" disabled>保存</button>
+      <button id="return" type="button">返回 OA</button>
+    </header>
+    <aside id="gate-banner" class="gate-banner">Document Identity Gate 已锁定：编辑和保存不可用。</aside>
+    <section id="wps-container" class="locked" aria-label="Embedded WPS editor"></section>
+    <details class="state" open><summary>PROTOTYPE state</summary><pre id="state-output"></pre></details>
+  </main>
+  <script src="gate.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>

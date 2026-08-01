@@ -1,0 +1,1221 @@
+{
+  "capturedAt": "2026-08-01T10:55:48.641Z",
+  "machine": {
+    "platform": "linux",
+    "arch": "arm64",
+    "browser": "Chrome/102.0.5005.200"
+  },
+  "extensionOrigin": "chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb",
+  "cases": [
+    {
+      "scenario": "success",
+      "expectedPhase": "ready",
+      "phaseBeforeSaveProbe": "ready",
+      "finalState": {
+        "phase": "saved",
+        "attempt": 1,
+        "handoffId": "04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 951,
+          "sha256": "0b1a446c3f02d398956c00a1d2f7d117d42b8de310583203a6ffaf4ff9950d36"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+        "gatewayReceipt": {
+          "handoff": "04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 951,
+          "sha256": "0b1a446c3f02d398956c00a1d2f7d117d42b8de310583203a6ffaf4ff9950d36",
+          "deliveredAt": "2026-08-01T10:54:58.594Z",
+          "expiresAtEpochMs": 1785581713594,
+          "availableAtEpochMs": 1785581698594
+        },
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "passed",
+          "reason": "OA source identity exactly matches the Gateway Delivery Receipt"
+        },
+        "controls": {
+          "editing": true,
+          "save": true,
+          "retry": false,
+          "return": true
+        },
+        "error": null,
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:54:55.585Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:54:55.618Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:54:55.626Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:54:58.228Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:54:58.752Z"
+          },
+          {
+            "type": "gate-passed",
+            "at": "2026-08-01T10:54:58.767Z"
+          },
+          {
+            "type": "save-started",
+            "at": "2026-08-01T10:54:59.082Z"
+          },
+          {
+            "type": "save-finished",
+            "at": "2026-08-01T10:54:59.678Z"
+          }
+        ],
+        "saveResult": true
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": false,
+        "retryDisabled": true,
+        "returnDisabled": false,
+        "containerClass": "unlocked",
+        "objectCount": 1,
+        "objectRect": {
+          "width": 1042,
+          "height": 313.203125,
+          "left": 0,
+          "top": 89.796875
+        }
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": false,
+        "retryDisabled": true,
+        "returnDisabled": false,
+        "containerClass": "unlocked",
+        "objectCount": 1,
+        "objectRect": {
+          "width": 1042,
+          "height": 313.203125,
+          "left": 0,
+          "top": 89.796875
+        }
+      },
+      "overwritePostsBefore": 0,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [
+        {
+          "actualFormat": "DOCX",
+          "bytes": 951,
+          "cacheKey": "04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+          "cookie": "",
+          "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+          "gateway": true,
+          "handoff": "04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+          "method": "GET",
+          "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+          "scenario": "success",
+          "sha256": "0b1a446c3f02d398956c00a1d2f7d117d42b8de310583203a6ffaf4ff9950d36",
+          "status": 200,
+          "time": "2026-08-01T10:54:58.594Z",
+          "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+        }
+      ],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 951,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=success&run=capture-1785581693746",
+          "scenario": "success",
+          "sha256": "0b1a446c3f02d398956c00a1d2f7d117d42b8de310583203a6ffaf4ff9950d36",
+          "status": 200,
+          "time": "2026-08-01T10:54:55.609Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "missing-session",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "4464c717-1afe-4e3c-9a9c-563d4ba02b0d",
+        "sourceIdentity": null,
+        "gatewayUrl": null,
+        "gatewayReceipt": null,
+        "plugin": null,
+        "openResult": null,
+        "gate": {
+          "status": "failed",
+          "reason": "Authenticated OA source read returned HTTP 401"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Authenticated OA source read returned HTTP 401",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:01.413Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:01.432Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:01.432Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [],
+      "sourceRequests": [
+        {
+          "auth": "missing",
+          "cookie": "",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=missing-session&run=capture-1785581693746",
+          "scenario": "missing-session",
+          "status": 401,
+          "time": "2026-08-01T10:55:01.428Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "error-page",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "b93d1cfd-9aec-4db8-9c9c-68e5e03b98cf",
+        "sourceIdentity": null,
+        "gatewayUrl": null,
+        "gatewayReceipt": null,
+        "plugin": null,
+        "openResult": null,
+        "gate": {
+          "status": "failed",
+          "reason": "Authenticated OA source is unknown, expected DOCX"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Authenticated OA source is unknown, expected DOCX",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:03.909Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:03.929Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:03.929Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [],
+      "sourceRequests": [
+        {
+          "actualFormat": "unknown",
+          "auth": "accepted",
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=error-page&run=capture-1785581693746",
+          "scenario": "error-page",
+          "status": 200,
+          "time": "2026-08-01T10:55:03.923Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "wrong-document",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "caf37dac-d34a-4f68-9b54-51452078615e",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=caf37dac-d34a-4f68-9b54-51452078615e",
+        "gatewayReceipt": null,
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "failed",
+          "reason": "Gateway Delivery Receipt has the wrong byte count"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Gateway Delivery Receipt has the wrong byte count",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:06.418Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:06.439Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:55:06.445Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:55:07.976Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:55:08.386Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:08.481Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [
+        {
+          "actualFormat": "DOCX",
+          "bytes": 950,
+          "cacheKey": "caf37dac-d34a-4f68-9b54-51452078615e",
+          "cookie": "",
+          "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+          "gateway": true,
+          "handoff": "caf37dac-d34a-4f68-9b54-51452078615e",
+          "method": "GET",
+          "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=caf37dac-d34a-4f68-9b54-51452078615e",
+          "scenario": "wrong-document",
+          "sha256": "567756d912212fdc382611bcd57857027bfbaa3a1dcd13d1ece934e6ca4f5c92",
+          "status": 200,
+          "time": "2026-08-01T10:55:08.326Z",
+          "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+        }
+      ],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 9745,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=wrong-document&run=capture-1785581693746",
+          "scenario": "wrong-document",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:06.433Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "missing-receipt",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "bf4625f0-b175-4588-bc89-88436c9c8d7a",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=bf4625f0-b175-4588-bc89-88436c9c8d7a",
+        "gatewayReceipt": null,
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "failed",
+          "reason": "Gateway Delivery Receipt did not arrive before the verification timeout"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Gateway Delivery Receipt did not arrive before the verification timeout",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:10.723Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:10.746Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:55:10.752Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:55:12.114Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:55:12.457Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:15.575Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [
+        {
+          "actualFormat": "DOCX",
+          "bytes": 9745,
+          "cacheKey": "bf4625f0-b175-4588-bc89-88436c9c8d7a",
+          "cookie": "",
+          "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+          "gateway": true,
+          "handoff": "bf4625f0-b175-4588-bc89-88436c9c8d7a",
+          "method": "GET",
+          "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=bf4625f0-b175-4588-bc89-88436c9c8d7a",
+          "scenario": "missing-receipt",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:12.382Z",
+          "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+        }
+      ],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 9745,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=missing-receipt&run=capture-1785581693746",
+          "scenario": "missing-receipt",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:10.738Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "mismatch",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+        "gatewayReceipt": null,
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "failed",
+          "reason": "Gateway Delivery Receipt has the wrong SHA-256"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Gateway Delivery Receipt has the wrong SHA-256",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:17.894Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:17.916Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:55:17.924Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:55:19.369Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:55:19.676Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:19.761Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [
+        {
+          "actualFormat": "DOCX",
+          "bytes": 9745,
+          "cacheKey": "3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+          "cookie": "",
+          "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+          "gateway": true,
+          "handoff": "3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+          "method": "GET",
+          "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+          "scenario": "mismatch",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:19.606Z",
+          "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+        }
+      ],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 9745,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=mismatch&run=capture-1785581693746",
+          "scenario": "mismatch",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:17.910Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "timeout",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "04681eab-880d-4c04-a831-38348594619d",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=04681eab-880d-4c04-a831-38348594619d",
+        "gatewayReceipt": null,
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "failed",
+          "reason": "Gateway Delivery Receipt did not arrive before the verification timeout"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Gateway Delivery Receipt did not arrive before the verification timeout",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:22.008Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:22.028Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:55:22.034Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:55:23.689Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:55:24.038Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:27.169Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [
+        {
+          "actualFormat": "DOCX",
+          "bytes": 9745,
+          "cacheKey": "04681eab-880d-4c04-a831-38348594619d",
+          "cookie": "",
+          "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+          "gateway": true,
+          "handoff": "04681eab-880d-4c04-a831-38348594619d",
+          "method": "GET",
+          "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=04681eab-880d-4c04-a831-38348594619d",
+          "scenario": "timeout",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:23.976Z",
+          "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+        }
+      ],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 9745,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=timeout&run=capture-1785581693746",
+          "scenario": "timeout",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:22.022Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "stale-seed",
+      "expectedPhase": "ready",
+      "phaseBeforeSaveProbe": "ready",
+      "finalState": {
+        "phase": "ready",
+        "attempt": 1,
+        "handoffId": "85c0eff7-fb5f-46cf-b9ce-44c85361d36e",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=ticket-42-stable-cache-capture-1785581693746",
+        "gatewayReceipt": {
+          "handoff": "85c0eff7-fb5f-46cf-b9ce-44c85361d36e",
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "deliveredAt": "2026-08-01T10:55:31.253Z",
+          "expiresAtEpochMs": 1785581746253,
+          "availableAtEpochMs": 1785581731253
+        },
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "passed",
+          "reason": "OA source identity exactly matches the Gateway Delivery Receipt"
+        },
+        "controls": {
+          "editing": true,
+          "save": true,
+          "retry": false,
+          "return": true
+        },
+        "error": null,
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:29.451Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:29.477Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:55:29.483Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:55:31.025Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:55:31.310Z"
+          },
+          {
+            "type": "gate-passed",
+            "at": "2026-08-01T10:55:31.323Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": false,
+        "retryDisabled": true,
+        "returnDisabled": false,
+        "containerClass": "unlocked",
+        "objectCount": 1,
+        "objectRect": {
+          "width": 1042,
+          "height": 313.203125,
+          "left": 0,
+          "top": 89.796875
+        }
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": false,
+        "retryDisabled": true,
+        "returnDisabled": false,
+        "containerClass": "unlocked",
+        "objectCount": 1,
+        "objectRect": {
+          "width": 1042,
+          "height": 313.203125,
+          "left": 0,
+          "top": 89.796875
+        }
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [
+        {
+          "actualFormat": "DOCX",
+          "bytes": 9745,
+          "cacheKey": "ticket-42-stable-cache-capture-1785581693746",
+          "cookie": "",
+          "decodedFileurl": "/UploadFiles/2026/quarterly-report.docx",
+          "gateway": true,
+          "handoff": "85c0eff7-fb5f-46cf-b9ce-44c85361d36e",
+          "method": "GET",
+          "path": "/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=ticket-42-stable-cache-capture-1785581693746",
+          "scenario": "stale-seed",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:31.253Z",
+          "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+        }
+      ],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 9745,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=stale-seed&run=capture-1785581693746",
+          "scenario": "stale-seed",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:29.470Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    },
+    {
+      "scenario": "stale-cache",
+      "expectedPhase": "failed",
+      "phaseBeforeSaveProbe": "failed",
+      "finalState": {
+        "phase": "failed",
+        "attempt": 1,
+        "handoffId": "b4ee3a95-57a8-4b84-8143-21abffb791a7",
+        "sourceIdentity": {
+          "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+          "format": "DOCX",
+          "bytes": 9745,
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+        },
+        "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=ticket-42-stable-cache-capture-1785581693746",
+        "gatewayReceipt": null,
+        "plugin": {
+          "mimeType": "application/x-wps",
+          "applicationName": "WPS文字"
+        },
+        "openResult": true,
+        "gate": {
+          "status": "failed",
+          "reason": "Gateway Delivery Receipt did not arrive before the verification timeout"
+        },
+        "controls": {
+          "editing": false,
+          "save": false,
+          "retry": true,
+          "return": true
+        },
+        "error": "Gateway Delivery Receipt did not arrive before the verification timeout",
+        "events": [
+          {
+            "type": "prototype-started",
+            "at": "2026-08-01T10:55:33.552Z"
+          },
+          {
+            "type": "attempt-started",
+            "at": "2026-08-01T10:55:33.572Z"
+          },
+          {
+            "type": "source-identified",
+            "at": "2026-08-01T10:55:33.578Z"
+          },
+          {
+            "type": "plugin-ready",
+            "at": "2026-08-01T10:55:35.053Z"
+          },
+          {
+            "type": "document-opened",
+            "at": "2026-08-01T10:55:35.395Z"
+          },
+          {
+            "type": "failed",
+            "at": "2026-08-01T10:55:38.556Z"
+          }
+        ]
+      },
+      "controlsBeforeSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "controlsAfterSaveProbe": {
+        "saveDisabled": true,
+        "retryDisabled": false,
+        "returnDisabled": false,
+        "containerClass": "locked",
+        "objectCount": 0,
+        "objectRect": null
+      },
+      "overwritePostsBefore": 1,
+      "overwritePostsAfter": 1,
+      "gatewayRequests": [],
+      "sourceRequests": [
+        {
+          "actualFormat": "DOCX",
+          "auth": "accepted",
+          "bytes": 9745,
+          "cookie": "oa_session=ticket-42-demo-session",
+          "directSource": true,
+          "method": "GET",
+          "path": "/UploadFiles/2026/quarterly-report.docx?case=stale-cache&run=capture-1785581693746",
+          "scenario": "stale-cache",
+          "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+          "status": 200,
+          "time": "2026-08-01T10:55:33.565Z",
+          "userAgent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.200 Safari/537.36 Qaxbrowser"
+        }
+      ]
+    }
+  ],
+  "retry": {
+    "scenario": "fresh-retry",
+    "firstState": {
+      "phase": "failed",
+      "attempt": 1,
+      "handoffId": "9986bbb0-f6c1-4662-be5b-7f827d7055c9",
+      "sourceIdentity": {
+        "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+        "format": "DOCX",
+        "bytes": 9745,
+        "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+      },
+      "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=9986bbb0-f6c1-4662-be5b-7f827d7055c9",
+      "gatewayReceipt": null,
+      "plugin": {
+        "mimeType": "application/x-wps",
+        "applicationName": "WPS文字"
+      },
+      "openResult": true,
+      "gate": {
+        "status": "failed",
+        "reason": "Gateway Delivery Receipt did not arrive before the verification timeout"
+      },
+      "controls": {
+        "editing": false,
+        "save": false,
+        "retry": true,
+        "return": true
+      },
+      "error": "Gateway Delivery Receipt did not arrive before the verification timeout",
+      "events": [
+        {
+          "type": "prototype-started",
+          "at": "2026-08-01T10:55:40.653Z"
+        },
+        {
+          "type": "attempt-started",
+          "at": "2026-08-01T10:55:40.677Z"
+        },
+        {
+          "type": "source-identified",
+          "at": "2026-08-01T10:55:40.684Z"
+        },
+        {
+          "type": "plugin-ready",
+          "at": "2026-08-01T10:55:42.282Z"
+        },
+        {
+          "type": "document-opened",
+          "at": "2026-08-01T10:55:42.590Z"
+        },
+        {
+          "type": "failed",
+          "at": "2026-08-01T10:55:45.748Z"
+        }
+      ]
+    },
+    "secondState": {
+      "phase": "ready",
+      "attempt": 2,
+      "handoffId": "f24c0bd7-c5eb-4128-bdc5-a2ea9edd1ca4",
+      "sourceIdentity": {
+        "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+        "format": "DOCX",
+        "bytes": 9745,
+        "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f"
+      },
+      "gatewayUrl": "http://127.0.0.1:49250/wps/v1/document?fileurl=%2FUploadFiles%2F2026%2Fquarterly-report.docx&_wpsHandoff=f24c0bd7-c5eb-4128-bdc5-a2ea9edd1ca4",
+      "gatewayReceipt": {
+        "handoff": "f24c0bd7-c5eb-4128-bdc5-a2ea9edd1ca4",
+        "sourcePath": "/UploadFiles/2026/quarterly-report.docx",
+        "format": "DOCX",
+        "bytes": 9745,
+        "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+        "deliveredAt": "2026-08-01T10:55:47.706Z",
+        "expiresAtEpochMs": 1785581762706,
+        "availableAtEpochMs": 1785581747706
+      },
+      "plugin": {
+        "mimeType": "application/x-wps",
+        "applicationName": "WPS文字"
+      },
+      "openResult": true,
+      "gate": {
+        "status": "passed",
+        "reason": "OA source identity exactly matches the Gateway Delivery Receipt"
+      },
+      "controls": {
+        "editing": true,
+        "save": true,
+        "retry": false,
+        "return": true
+      },
+      "error": null,
+      "events": [
+        {
+          "type": "prototype-started",
+          "at": "2026-08-01T10:55:40.653Z"
+        },
+        {
+          "type": "attempt-started",
+          "at": "2026-08-01T10:55:40.677Z"
+        },
+        {
+          "type": "source-identified",
+          "at": "2026-08-01T10:55:40.684Z"
+        },
+        {
+          "type": "plugin-ready",
+          "at": "2026-08-01T10:55:42.282Z"
+        },
+        {
+          "type": "document-opened",
+          "at": "2026-08-01T10:55:42.590Z"
+        },
+        {
+          "type": "failed",
+          "at": "2026-08-01T10:55:45.748Z"
+        },
+        {
+          "type": "attempt-started",
+          "at": "2026-08-01T10:55:45.987Z"
+        },
+        {
+          "type": "source-identified",
+          "at": "2026-08-01T10:55:45.993Z"
+        },
+        {
+          "type": "plugin-ready",
+          "at": "2026-08-01T10:55:47.468Z"
+        },
+        {
+          "type": "document-opened",
+          "at": "2026-08-01T10:55:47.839Z"
+        },
+        {
+          "type": "gate-passed",
+          "at": "2026-08-01T10:55:47.884Z"
+        }
+      ]
+    },
+    "firstControls": {
+      "saveDisabled": true,
+      "retryDisabled": false,
+      "returnDisabled": false,
+      "containerClass": "locked",
+      "objectCount": 0,
+      "objectRect": null
+    },
+    "secondControls": {
+      "saveDisabled": false,
+      "retryDisabled": true,
+      "returnDisabled": false,
+      "containerClass": "unlocked",
+      "objectCount": 1,
+      "objectRect": {
+        "width": 1042,
+        "height": 313.203125,
+        "left": 0,
+        "top": 89.796875
+      }
+    },
+    "overwritePostsBefore": 1,
+    "overwritePostsAfter": 1
+  },
+  "gatewayRequestSummary": [
+    {
+      "scenario": "success",
+      "handoff": "04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+      "cacheKey": "04afd1d8-a3ef-4156-bb94-90fc02fdcf42",
+      "bytes": 951,
+      "sha256": "0b1a446c3f02d398956c00a1d2f7d117d42b8de310583203a6ffaf4ff9950d36",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "wrong-document",
+      "handoff": "caf37dac-d34a-4f68-9b54-51452078615e",
+      "cacheKey": "caf37dac-d34a-4f68-9b54-51452078615e",
+      "bytes": 950,
+      "sha256": "567756d912212fdc382611bcd57857027bfbaa3a1dcd13d1ece934e6ca4f5c92",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "missing-receipt",
+      "handoff": "bf4625f0-b175-4588-bc89-88436c9c8d7a",
+      "cacheKey": "bf4625f0-b175-4588-bc89-88436c9c8d7a",
+      "bytes": 9745,
+      "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "mismatch",
+      "handoff": "3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+      "cacheKey": "3a9b434e-dc15-43cf-b7a7-979f23fa9bcc",
+      "bytes": 9745,
+      "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "timeout",
+      "handoff": "04681eab-880d-4c04-a831-38348594619d",
+      "cacheKey": "04681eab-880d-4c04-a831-38348594619d",
+      "bytes": 9745,
+      "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "stale-seed",
+      "handoff": "85c0eff7-fb5f-46cf-b9ce-44c85361d36e",
+      "cacheKey": "ticket-42-stable-cache-capture-1785581693746",
+      "bytes": 9745,
+      "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "fresh-retry",
+      "handoff": "9986bbb0-f6c1-4662-be5b-7f827d7055c9",
+      "cacheKey": "9986bbb0-f6c1-4662-be5b-7f827d7055c9",
+      "bytes": 9745,
+      "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    },
+    {
+      "scenario": "success",
+      "handoff": "f24c0bd7-c5eb-4128-bdc5-a2ea9edd1ca4",
+      "cacheKey": "f24c0bd7-c5eb-4128-bdc5-a2ea9edd1ca4",
+      "bytes": 9745,
+      "sha256": "9bcd268687d57ed0f45763f88611569abd6fd9d8e8120c956e73768be2a1ef5f",
+      "userAgent": "Microsoft Data Access Internet Publishing Provider DAV"
+    }
+  ],
+  "assertions": {
+    "targetBrowserIsQaxChromium102": true,
+    "successReadUsedOaSession": true,
+    "successIdentityExactlyMatched": true,
+    "editingAndSaveUnlockedOnlyAfterPass": true,
+    "missingSessionFailedAtAuthenticatedSourceRead": true,
+    "htmlErrorPageRejectedByActualFormat": true,
+    "wrongValidDocumentRejected": true,
+    "missingReceiptTimedOut": true,
+    "falsifiedReceiptRejected": true,
+    "delayedReceiptTimedOut": true,
+    "staleCacheAttemptHadNoUsableReceipt": true,
+    "allScenariosReachedExpectedPhase": true,
+    "staleCacheWasSeededThenReusedWithoutGet": true,
+    "everyFailedGatePreventedOverwrite": true,
+    "successfulGateAllowedOverwrite": true,
+    "retryUsedFreshHandoff": true,
+    "retryFailedClosedThenPassed": true,
+    "retryDidNotOverwrite": true
+  }
+}

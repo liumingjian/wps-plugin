@@ -1,0 +1,29 @@
+{
+  "capturedAt": "2026-08-01T10:55:48.641Z",
+  "machine": {
+    "platform": "linux",
+    "arch": "arm64",
+    "browser": "Chrome/102.0.5005.200"
+  },
+  "assertions": {
+    "targetBrowserIsQaxChromium102": true,
+    "successReadUsedOaSession": true,
+    "successIdentityExactlyMatched": true,
+    "editingAndSaveUnlockedOnlyAfterPass": true,
+    "missingSessionFailedAtAuthenticatedSourceRead": true,
+    "htmlErrorPageRejectedByActualFormat": true,
+    "wrongValidDocumentRejected": true,
+    "missingReceiptTimedOut": true,
+    "falsifiedReceiptRejected": true,
+    "delayedReceiptTimedOut": true,
+    "staleCacheAttemptHadNoUsableReceipt": true,
+    "allScenariosReachedExpectedPhase": true,
+    "staleCacheWasSeededThenReusedWithoutGet": true,
+    "everyFailedGatePreventedOverwrite": true,
+    "successfulGateAllowedOverwrite": true,
+    "retryUsedFreshHandoff": true,
+    "retryFailedClosedThenPassed": true,
+    "retryDidNotOverwrite": true
+  },
+  "result": "/home/xiaohu/lmj/repo/wps-plugin/prototypes/document-identity-gate/evidence/result.json"
+}
