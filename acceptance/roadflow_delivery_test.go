@@ -35,6 +35,15 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		Background              struct {
 			ServiceWorker string `json:"service_worker"`
 		} `json:"background"`
+		ContentScripts []struct {
+			Matches []string `json:"matches"`
+			JS      []string `json:"js"`
+			RunAt   string   `json:"run_at"`
+		} `json:"content_scripts"`
+		WebAccessibleResources []struct {
+			Resources []string `json:"resources"`
+			Matches   []string `json:"matches"`
+		} `json:"web_accessible_resources"`
 	}
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		t.Fatal(err)
@@ -52,9 +61,17 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	if manifest.OptionsPage != "options.html" || manifest.Background.ServiceWorker != "service-worker.js" {
 		t.Fatalf("RoadFlow packaged entry points = %+v", manifest)
 	}
+	if len(manifest.ContentScripts) != 1 || strings.Join(manifest.ContentScripts[0].Matches, ",") != "http://*/*,https://*/*" ||
+		strings.Join(manifest.ContentScripts[0].JS, ",") != "content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
+		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
+	}
+	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html" ||
+		strings.Join(manifest.WebAccessibleResources[0].Matches, ",") != "http://*/*,https://*/*" {
+		t.Fatalf("RoadFlow editor navigation resources = %+v", manifest.WebAccessibleResources)
+	}
 
 	for _, name := range []string{
-		"configuration.js", "editor.css", "editor.html",
+		"configuration.js", "content.js", "editor.css", "editor.html", "editor.js",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
 		"readiness.js", "service-worker.js",
 	} {
@@ -62,12 +79,6 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 			t.Errorf("staged RoadFlow asset %s: %v", name, err)
 		}
 	}
-	for _, name := range []string{"content.js", "editor.js"} {
-		if _, err := os.Stat(filepath.Join(extensionRoot, name)); !os.IsNotExist(err) {
-			t.Errorf("deferred RoadFlow asset %s was staged: %v", name, err)
-		}
-	}
-
 	err = filepath.WalkDir(extensionRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() {
 			return walkErr

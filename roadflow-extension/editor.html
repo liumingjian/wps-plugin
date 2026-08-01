@@ -7,7 +7,15 @@
   <link rel="stylesheet" href="editor.css">
 </head>
 <body>
-  <header><strong id="document-title">RoadFlow Document</strong><span id="editor-status">Preparing editor</span></header>
-  <main><object id="wps-surface" type="application/x-wps" aria-label="WPS Document editor"></object></main>
+  <header>
+    <div class="document-context">
+      <strong id="document-title">RoadFlow Document</strong>
+      <span id="source-label"></span>
+    </div>
+    <span id="editor-status">正在打开正文</span>
+    <button id="return-to-oa" type="button" disabled>返回 OA</button>
+  </header>
+  <main id="editor-host"></main>
+  <script src="editor.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@ if [[ -e "$output" ]]; then
 fi
 
 mkdir -p "$output"
-for file in configuration.js editor.css editor.html options.css options.html options.js readiness.html readiness.js service-worker.js; do
+for file in configuration.js content.js editor.css editor.html editor.js options.css options.html options.js readiness.html readiness.js service-worker.js; do
   install -m 0644 "$repo/roadflow-extension/$file" "$output/$file"
 done
 sed -E "s/\"version\": \"[^\"]+\"/\"version\": \"$version\"/" "$repo/roadflow-extension/manifest.json" >"$output/manifest.json"
