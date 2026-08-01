@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoadFlow WPS setup</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <header><img src="icon.png" alt=""><div><h1>RoadFlow WPS setup</h1><p>Browser profile configuration</p></div></header>
+    <form id="setup-form">
+      <label for="trusted-origin">Trusted OA Origin</label>
+      <input id="trusted-origin" name="trustedOrigin" type="url" required spellcheck="false" autocomplete="off">
+      <label for="gateway-template">WPS Document Gateway template</label>
+      <input id="gateway-template" name="gatewayTemplate" type="text" required spellcheck="false" autocomplete="off">
+      <p id="form-message" role="status" aria-live="polite"></p>
+      <button type="submit">Save configuration</button>
+    </form>
+  </main>
+  <script src="configuration.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

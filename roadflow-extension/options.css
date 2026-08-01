@@ -1,0 +1,18 @@
+:root { color-scheme: light; font-family: Arial, sans-serif; color: #202124; background: #f4f6f8; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(680px, calc(100% - 32px)); margin: 48px auto; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+header img { width: 40px; height: 40px; }
+h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+header p { margin: 4px 0 0; color: #5f6368; }
+form { display: grid; gap: 10px; padding: 24px; border: 1px solid #d7dce1; border-radius: 6px; background: white; }
+label { margin-top: 8px; font-weight: 600; }
+input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #9aa0a6; border-radius: 4px; font: inherit; }
+input:focus { border-color: #1769aa; outline: 2px solid #d2e6f5; }
+#form-message { min-height: 20px; margin: 4px 0; color: #b3261e; }
+button { justify-self: start; min-height: 40px; padding: 0 18px; border: 0; border-radius: 4px; color: white; background: #1769aa; font: 600 14px Arial, sans-serif; cursor: pointer; }
+.readiness { width: 360px; margin: 0; padding: 18px; background: white; }
+.readiness header { align-items: flex-start; margin-bottom: 16px; }
+.readiness h1 { font-size: 18px; }
+.readiness header p { line-height: 1.4; }

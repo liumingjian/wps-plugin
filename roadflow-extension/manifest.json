@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "RoadFlow WPS Editor",
+  "version": "1.0.0",
+  "description": "Open configured RoadFlow Word documents in the packaged WPS editor.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsa0sYIXM3urLK36PjQx0/L6bLSBopbffoJ8qNNJ6CPPkhw6egINVbH2kLdjGnfRnfUX5nGCUZWH5XK9s+JHi9nOrSlPSBzYjzzVx8SnGtH6Cddy89G4lDdprMStgHvpjjDDzf+5yAq5aQkoKCVWr5WhWbcHP05N3kDoOot0za69IEDwWl+52qZyT4LxWDDBI45LpgUrcYCDbH6NZftFgnEU85avueDHi7JqKUt6DAWxfj4JHTr8IZjh+EDVQ/nMuWP77eLO/1xsbwTW7lq65EeJwBe1Ap3ymoZ33rTS5Zj5qNQyu7zoaMFp+pfshJigCf3gw4yRCM289b12qOXW8pQIDAQAB",
+  "permissions": ["storage"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "RoadFlow WPS readiness", "default_popup": "readiness.html" },
+  "options_page": "options.html",
+  "icons": { "16": "icon.png", "48": "icon.png", "128": "icon.png" }
+}

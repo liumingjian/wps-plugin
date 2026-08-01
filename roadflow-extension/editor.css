@@ -1,0 +1,8 @@
+:root { font-family: Arial, sans-serif; color: #202124; background: #eef1f4; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { display: grid; grid-template-rows: 48px minmax(0, 1fr); }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 16px; border-bottom: 1px solid #c8cdd2; background: white; }
+header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#editor-status { flex: none; color: #5f6368; font-size: 13px; }
+main, object { width: 100%; height: 100%; border: 0; }
