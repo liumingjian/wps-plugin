@@ -206,4 +206,9 @@ func TestRoadFlowProductionAcceptanceCoversTheRealCustomerBoundary(t *testing.T)
 		"NOT EXECUTED", "NOT ACCEPTED", "Signed CRX SHA-256", "Gateway deployment revision",
 		"DOCX pass/fail", "DOC pass/fail", "zero delta in OfficeSave requests",
 	})
+	assertContains(t, filepath.Join(repo, "docs", "roadflow-local-simulated-acceptance-result.md"), []string{
+		"ACCEPTED FOR THE REVISED #51 SCOPE", "qaxbrowser-safe-stable 1.0.46402.2-1",
+		"Kingsoft WPS Plugin", "Microsoft DAV User-Agent", "LOCAL-ACCEPTANCE-20260802",
+		"CFB/OLE Word Document", "ACCEPTED FOR SIMULATED OA AND LOCAL ENVIRONMENT",
+	})
 }

@@ -71,6 +71,8 @@ The controlled boundary supplies source identity, Gateway receipt, and WPS
 NPAPI responses. Therefore this simulation is automated regression evidence,
 not authenticated customer OA, real Gateway, or target-machine acceptance. Keep
 the production result `NOT ACCEPTED` until those external checks are executed.
+The completed local-scope evidence is recorded separately in
+[`roadflow-local-simulated-acceptance-result.md`](roadflow-local-simulated-acceptance-result.md).
 
 ## Gateway deployment checks
 
