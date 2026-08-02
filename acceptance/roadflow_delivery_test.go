@@ -179,3 +179,26 @@ func TestRoadFlowCRXPackagingAndCustomerGuidanceStayOnTheBrowserRoute(t *testing
 		"designated Kylin", "Qaxbrowser", "NPAPI", "RoadFlow", "ADR 0001", "ADR 0005", "separate extension identity",
 	})
 }
+
+func TestRoadFlowProductionAcceptanceCoversTheRealCustomerBoundary(t *testing.T) {
+	repo := repoRoot(t)
+	assertContains(t, filepath.Join(repo, "package.json"), []string{
+		"@playwright/test", "test:browser",
+	})
+	assertContains(t, filepath.Join(repo, "roadflow-extension", "editor.browser.test.mjs"), []string{
+		"failed Document Identity Gate", "overwriteCalls", "Recoverable Overwrite Failure",
+		"horizontalOverflow", "narrow",
+	})
+	assertContains(t, filepath.Join(repo, "docs", "roadflow-production-acceptance.md"), []string{
+		"real Gateway", "DOCX", "DOC", "same tab", "authenticated OA",
+		"fixed CRX Origin", "Access-Control-Allow-Origin", "retention", "cleanup",
+		"10-second verification timeout", "Authentication loss", "Wrong Document",
+		"Stale cache", "Missing receipt", "Mismatched receipt", "WPS failure",
+		"Save failure", "Retry", "Discard", "Return failure", "zero new OfficeSave requests",
+		"no Native Messaging", "no local agent", "no product middleware", "no system repair",
+	})
+	assertContains(t, filepath.Join(repo, "docs", "roadflow-production-acceptance-result.md"), []string{
+		"NOT EXECUTED", "NOT ACCEPTED", "Signed CRX SHA-256", "Gateway deployment revision",
+		"DOCX pass/fail", "DOC pass/fail", "zero delta in OfficeSave requests",
+	})
+}
