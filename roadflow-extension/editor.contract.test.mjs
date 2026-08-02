@@ -215,8 +215,10 @@ overwriting.elements['return-to-oa'].clickListener();
 assert.equal(overwriting.replacementURL(), handoff.returnURL);
 
 const recoverableFailure = await loadEditor({ overwriteResults: [false, true], confirmDiscard: false });
+const liveWPS = recoverableFailure.elements['editor-host'].children[0];
 await recoverableFailure.elements['save-document'].clickListener();
 assert.equal(recoverableFailure.elements['editor-host'].children.length, 1);
+assert.equal(recoverableFailure.elements['editor-host'].children[0], liveWPS);
 assert.equal(recoverableFailure.elements['editor-host'].className, 'unlocked');
 assert.equal(recoverableFailure.elements['editor-status'].textContent, '保存失败');
 assert.equal(recoverableFailure.elements['save-document'].textContent, '重试保存');
@@ -224,17 +226,26 @@ assert.equal(recoverableFailure.elements['save-document'].disabled, false);
 assert.equal(recoverableFailure.elements['return-to-oa'].disabled, false);
 assert.equal(recoverableFailure.overwriteCalls.length, 1);
 recoverableFailure.elements['return-to-oa'].clickListener();
-assert.equal(recoverableFailure.confirmations.length, 1);
+assert.deepEqual(recoverableFailure.confirmations, ['保存失败。放弃当前修改并返回 OA？']);
 assert.equal(recoverableFailure.replacementURL(), undefined);
+assert.equal(recoverableFailure.elements['editor-host'].children[0], liveWPS);
+assert.equal(recoverableFailure.elements['save-document'].disabled, false);
+assert.equal(recoverableFailure.elements['return-to-oa'].disabled, false);
 await recoverableFailure.elements['save-document'].clickListener();
 assert.equal(recoverableFailure.overwriteCalls.length, 2);
+assert.deepEqual(recoverableFailure.overwriteCalls[1], recoverableFailure.overwriteCalls[0]);
 assert.equal(recoverableFailure.elements['editor-status'].textContent, '已保存');
 assert.equal(recoverableFailure.replacementURL(), undefined);
 
 const discarded = await loadEditor({ overwriteResults: [new Error('OA rejected overwrite')] });
+const discardedWPS = discarded.elements['editor-host'].children[0];
 await discarded.elements['save-document'].clickListener();
+assert.equal(discarded.elements['editor-host'].children[0], discardedWPS);
+assert.equal(discarded.elements['editor-status'].textContent, '保存失败');
+assert.equal(discarded.elements['save-document'].textContent, '重试保存');
+assert.equal(discarded.overwriteCalls.length, 1);
 discarded.elements['return-to-oa'].clickListener();
-assert.equal(discarded.confirmations.length, 1);
+assert.deepEqual(discarded.confirmations, ['保存失败。放弃当前修改并返回 OA？']);
 assert.equal(discarded.replacementURL(), handoff.returnURL);
 
 const navigationFailure = await loadEditor({ replaceError: new Error('navigation blocked') });
@@ -243,6 +254,25 @@ assert.equal(navigationFailure.elements['editor-host'].children.length, 1);
 assert.equal(navigationFailure.elements['editor-host'].className, 'unlocked');
 assert.equal(navigationFailure.elements['return-to-oa'].disabled, false);
 assert.equal(navigationFailure.elements['editor-status'].textContent, '返回 OA 失败');
+
+const returnFailureAfterRecoverableOverwriteFailure = await loadEditor({
+  overwriteResults: [false, true],
+  replaceError: new Error('navigation blocked')
+});
+const failedReturnWPS = returnFailureAfterRecoverableOverwriteFailure.elements['editor-host'].children[0];
+await returnFailureAfterRecoverableOverwriteFailure.elements['save-document'].clickListener();
+returnFailureAfterRecoverableOverwriteFailure.elements['return-to-oa'].clickListener();
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['editor-host'].children[0], failedReturnWPS);
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['editor-host'].className, 'unlocked');
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['editor-status'].textContent, '返回 OA 失败');
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['save-document'].textContent, '重试保存');
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['save-document'].disabled, false);
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['return-to-oa'].disabled, false);
+await returnFailureAfterRecoverableOverwriteFailure.elements['save-document'].clickListener();
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.overwriteCalls.length, 2);
+assert.deepEqual(returnFailureAfterRecoverableOverwriteFailure.overwriteCalls[1],
+  returnFailureAfterRecoverableOverwriteFailure.overwriteCalls[0]);
+assert.equal(returnFailureAfterRecoverableOverwriteFailure.elements['editor-status'].textContent, '已保存');
 
 const freshHandoffID = 'b'.repeat(64);
 const committedIdentity = { ...sourceIdentity, sha256: 'c'.repeat(64), byteCount: 8192 };
