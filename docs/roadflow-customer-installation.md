@@ -30,14 +30,19 @@ placeholder. For example:
 https://wps-gateway.example.internal/wps/document?fileurl={sourcePath}
 ```
 
-Saving asks Qaxbrowser to grant access to that exact OA Origin. If the Origin is
-changed later, the old grant is removed after the replacement configuration is
-active. The extension does not register its link interceptor on other Origins.
+Saving asks Qaxbrowser to grant access to the exact OA and Gateway Origins. If
+either Origin is changed later, obsolete grants are removed after the replacement
+configuration is active. The extension does not register its link interceptor
+on other Origins.
 
 The customer-operated WPS Document Gateway must be read-only, byte-preserving,
 and reachable only on the trusted office network. It must not convert, retain,
-or modify the Document. Gateway Delivery Receipt behavior is configured with the full
-Document Identity Gate integration rather than by this CRX packaging step.
+or modify the Document. After fully writing and flushing a successful Document
+response, the Gateway records a metadata-only Delivery Receipt for at most 30
+seconds. The editor reads that receipt from the `delivery-receipt` sibling of
+the configured Gateway path, using the fresh `_wpsHandoff` value and the exact
+decoded source path. Receipt lookup must allow the fixed CRX Origin and must
+return a conflict response rather than choosing between duplicate records.
 
 ## DOCX source validation policy
 

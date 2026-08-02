@@ -15,6 +15,14 @@ assert.deepEqual(validate({
     gatewayTemplate: 'https://gateway.example.test/wps/document?fileurl={sourcePath}'
   }
 });
+assert.deepEqual(RoadFlowConfiguration.permissionPatterns({
+  trustedOrigin: 'https://oa.example.test',
+  gatewayTemplate: 'https://gateway.example.test/wps/document?fileurl={sourcePath}'
+}), ['https://oa.example.test/*', 'https://gateway.example.test/*']);
+assert.deepEqual(RoadFlowConfiguration.permissionPatterns({
+  trustedOrigin: 'https://oa.example.test',
+  gatewayTemplate: 'https://oa.example.test/wps/document?fileurl={sourcePath}'
+}), ['https://oa.example.test/*']);
 
 for (const input of [
   { trustedOrigin: '', gatewayTemplate: 'https://gateway.example.test/{sourcePath}' },

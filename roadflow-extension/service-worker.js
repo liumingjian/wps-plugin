@@ -3,6 +3,7 @@
 importScripts('configuration.js', 'source-identity-contract.js');
 
 const HANDOFF_STORAGE_KEY = 'editorHandoffs';
+const REVERIFICATION_STORAGE_KEY = 'editorReverifications';
 const HANDOFF_TTL_MS = 120_000;
 const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
 let handoffOperation = Promise.resolve();
@@ -49,6 +50,54 @@ function editorSender(sender) {
   }
 }
 
+function validatedEditorContext(value, configuration) {
+  if (!value || typeof value.returnURL !== 'string' || typeof value.sourceURL !== 'string' ||
+      typeof value.sourcePath !== 'string' || typeof value.title !== 'string' ||
+      typeof value.filename !== 'string' || value.expectedFormat !== 'docx' ||
+      value.trustedOrigin !== configuration.trustedOrigin || value.gatewayTemplate !== configuration.gatewayTemplate) return undefined;
+  try {
+    const returnURL = new URL(value.returnURL);
+    const sourceURL = new URL(value.sourceURL);
+    if (returnURL.origin !== configuration.trustedOrigin || sourceURL.origin !== configuration.trustedOrigin ||
+        sourceURL.username || sourceURL.password || sourceURL.pathname !== value.sourcePath ||
+        !/\.docx$/i.test(sourceURL.pathname)) return undefined;
+  } catch {
+    return undefined;
+  }
+  return {
+    returnURL: value.returnURL,
+    trustedOrigin: configuration.trustedOrigin,
+    sourceURL: value.sourceURL,
+    sourcePath: value.sourcePath,
+    title: value.title,
+    filename: value.filename,
+    expectedFormat: 'docx',
+    gatewayTemplate: configuration.gatewayTemplate
+  };
+}
+
+async function storeHandoff(context, pendingVerification = false, retryTabID) {
+  const createdAt = Date.now();
+  return serializedHandoffOperation(async () => {
+    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
+    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
+    for (const [id, handoff] of Object.entries(handoffs)) {
+      if (!handoff || handoff.expiresAt <= createdAt) delete handoffs[id];
+    }
+    let handoffID;
+    do { handoffID = randomHex(32); } while (handoffs[handoffID]);
+    handoffs[handoffID] = {
+      ...context,
+      cacheIdentity: randomHex(16),
+      createdAt,
+      expiresAt: createdAt + HANDOFF_TTL_MS,
+      ...(pendingVerification ? { pendingVerification: true, retryTabID } : {})
+    };
+    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
+    return { handoffID, handoff: handoffs[handoffID] };
+  });
+}
+
 async function createEditorHandoff(activation, sender) {
   const configuration = await configuredIntegration();
   if (!configuration || !sender?.tab || sender.url !== activation?.returnURL ||
@@ -75,33 +124,20 @@ async function createEditorHandoff(activation, sender) {
     ? RoadFlowSourceIdentityContract.validate(activation.sourceIdentity, sourcePath, expectedFormat)
     : undefined;
   if (expectedFormat === 'docx' && !sourceIdentity) return { ok: false };
-  const createdAt = Date.now();
-  return serializedHandoffOperation(async () => {
-    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
-    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
-    for (const [id, handoff] of Object.entries(handoffs)) {
-      if (!handoff || handoff.expiresAt <= createdAt) delete handoffs[id];
-    }
-    let handoffID;
-    do { handoffID = randomHex(32); } while (handoffs[handoffID]);
-    handoffs[handoffID] = {
-      returnURL: sender.url,
-      trustedOrigin: configuration.trustedOrigin,
-      sourceURL: source.href,
-      sourcePath,
-      title,
-      filename,
-      expectedFormat,
-      ...(sourceIdentity ? { sourceIdentity } : {}),
-      cacheIdentity: randomHex(16),
-      createdAt,
-      expiresAt: createdAt + HANDOFF_TTL_MS
-    };
-    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-    const editorURL = new URL(chrome.runtime.getURL('editor.html'));
-    editorURL.searchParams.set('handoff', handoffID);
-    return { ok: true, editorURL: editorURL.href };
+  const stored = await storeHandoff({
+    returnURL: sender.url,
+    trustedOrigin: configuration.trustedOrigin,
+    sourceURL: source.href,
+    sourcePath,
+    title,
+    filename,
+    expectedFormat,
+    gatewayTemplate: configuration.gatewayTemplate,
+    ...(sourceIdentity ? { sourceIdentity } : {})
   });
+  const editorURL = new URL(chrome.runtime.getURL('editor.html'));
+  editorURL.searchParams.set('handoff', stored.handoffID);
+  return { ok: true, editorURL: editorURL.href };
 }
 
 function consumeEditorHandoff(handoffID, sender) {
@@ -112,8 +148,67 @@ function consumeEditorHandoff(handoffID, sender) {
     const handoff = handoffs[handoffID];
     delete handoffs[handoffID];
     await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-    if (!handoff || handoff.expiresAt <= Date.now()) return { ok: false };
+    if (!handoff || handoff.pendingVerification || handoff.expiresAt <= Date.now()) return { ok: false };
     return { ok: true, handoff };
+  });
+}
+
+async function createReverificationHandoff(previousHandoff, sender) {
+  if (!editorSender(sender) || !Number.isInteger(sender?.tab?.id)) return { ok: false };
+  const configuration = await configuredIntegration();
+  const context = validatedEditorContext(previousHandoff, configuration || {});
+  if (!context) return { ok: false };
+  const stored = await storeHandoff(context, true, sender.tab.id);
+  await serializedHandoffOperation(async () => {
+    const session = await chrome.storage.session.get(REVERIFICATION_STORAGE_KEY);
+    const reverifications = session[REVERIFICATION_STORAGE_KEY] || {};
+    reverifications[sender.tab.id] = {
+      handoffID: stored.handoffID,
+      returnURL: context.returnURL,
+      sourceURL: context.sourceURL,
+      expiresAt: stored.handoff.expiresAt
+    };
+    await chrome.storage.session.set({ [REVERIFICATION_STORAGE_KEY]: reverifications });
+  });
+  return { ok: true, returnURL: context.returnURL };
+}
+
+function claimReverification(sender) {
+  if (!Number.isInteger(sender?.tab?.id)) return Promise.resolve({ ok: false });
+  return serializedHandoffOperation(async () => {
+    const stored = await chrome.storage.session.get(REVERIFICATION_STORAGE_KEY);
+    const reverifications = stored[REVERIFICATION_STORAGE_KEY] || {};
+    const request = reverifications[sender.tab.id];
+    delete reverifications[sender.tab.id];
+    await chrome.storage.session.set({ [REVERIFICATION_STORAGE_KEY]: reverifications });
+    if (!request || request.returnURL !== sender.url || request.expiresAt <= Date.now()) return { ok: false };
+    return { ok: true, handoffID: request.handoffID, sourceURL: request.sourceURL };
+  });
+}
+
+function completeReverificationHandoff(handoffID, sourceIdentity, sender) {
+  if (!HANDOFF_ID_PATTERN.test(handoffID || '') || !Number.isInteger(sender?.tab?.id)) {
+    return Promise.resolve({ ok: false });
+  }
+  return serializedHandoffOperation(async () => {
+    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
+    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
+    const handoff = handoffs[handoffID];
+    if (!handoff?.pendingVerification || handoff.retryTabID !== sender.tab.id ||
+        handoff.returnURL !== sender.url || handoff.expiresAt <= Date.now()) return { ok: false };
+    const identity = RoadFlowSourceIdentityContract.validate(sourceIdentity, handoff.sourcePath, handoff.expectedFormat);
+    if (!identity) {
+      delete handoffs[handoffID];
+      await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
+      return { ok: false };
+    }
+    delete handoff.pendingVerification;
+    delete handoff.retryTabID;
+    handoff.sourceIdentity = identity;
+    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
+    const editorURL = new URL(chrome.runtime.getURL('editor.html'));
+    editorURL.searchParams.set('handoff', handoffID);
+    return { ok: true, editorURL: editorURL.href };
   });
 }
 
@@ -130,6 +225,19 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     consumeEditorHandoff(request.handoffID, sender).then(respond).catch(() => respond({ ok: false }));
     return true;
   }
+  if (request?.type === 'create-reverification-handoff') {
+    createReverificationHandoff(request.previousHandoff, sender).then(respond).catch(() => respond({ ok: false }));
+    return true;
+  }
+  if (request?.type === 'claim-reverification') {
+    claimReverification(sender).then(respond).catch(() => respond({ ok: false }));
+    return true;
+  }
+  if (request?.type === 'complete-reverification-handoff') {
+    completeReverificationHandoff(request.handoffID, request.sourceIdentity, sender)
+      .then(respond).catch(() => respond({ ok: false }));
+    return true;
+  }
   if (request?.type !== 'apply-configuration') return false;
   if (sender.url !== chrome.runtime.getURL('options.html')) {
     respond({ ok: false, message: 'Configuration request was not authorized.' });
@@ -141,7 +249,7 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     respond(result);
     return false;
   }
-  const matches = [RoadFlowConfiguration.originPattern(result.value.trustedOrigin)];
+  const matches = RoadFlowConfiguration.permissionPatterns(result.value);
   chrome.permissions.contains({ origins: matches }).then(async granted => {
     if (!granted) {
       respond({ ok: false, message: 'Trusted OA Origin access was not granted.' });

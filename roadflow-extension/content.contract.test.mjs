@@ -37,6 +37,7 @@ globalThis.chrome = {
       if (message.type === 'configuration') {
         return { ok: true, configuration: { trustedOrigin: 'https://oa.example.test' } };
       }
+      if (message.type === 'claim-reverification') return { ok: false };
       if (handoffResponse instanceof Error) throw handoffResponse;
       return handoffResponse;
     }
@@ -95,6 +96,7 @@ assert.deepEqual(identityRequests, [{
 }]);
 assert.deepEqual(messages, [
   { type: 'configuration' },
+  { type: 'claim-reverification' },
   {
     type: 'create-editor-handoff',
     activation: {

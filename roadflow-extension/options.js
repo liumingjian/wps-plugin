@@ -27,23 +27,25 @@ form.addEventListener('submit', async event => {
     return;
   }
 
-  const requestedPattern = RoadFlowConfiguration.originPattern(result.value.trustedOrigin);
+  const requestedPatterns = RoadFlowConfiguration.permissionPatterns(result.value);
   try {
-    const granted = await chrome.permissions.request({ origins: [requestedPattern] });
+    const granted = await chrome.permissions.request({ origins: requestedPatterns });
     if (!granted) {
       message.textContent = 'Origin access was not granted. Configuration was not changed.';
       return;
     }
     const response = await chrome.runtime.sendMessage({ type: 'apply-configuration', configuration: result.value });
     if (!response?.ok) {
-      if (savedConfiguration?.trustedOrigin !== result.value.trustedOrigin) {
-        await chrome.permissions.remove({ origins: [requestedPattern] });
-      }
+      const retained = savedConfiguration ? RoadFlowConfiguration.permissionPatterns(savedConfiguration) : [];
+      await chrome.permissions.remove({ origins: requestedPatterns.filter(pattern => !retained.includes(pattern)) });
       message.textContent = response?.message || 'Configuration could not be applied.';
       return;
     }
-    if (savedConfiguration && savedConfiguration.trustedOrigin !== result.value.trustedOrigin) {
-      await chrome.permissions.remove({ origins: [RoadFlowConfiguration.originPattern(savedConfiguration.trustedOrigin)] });
+    if (savedConfiguration) {
+      const active = RoadFlowConfiguration.permissionPatterns(result.value);
+      const obsolete = RoadFlowConfiguration.permissionPatterns(savedConfiguration)
+        .filter(pattern => !active.includes(pattern));
+      if (obsolete.length > 0) await chrome.permissions.remove({ origins: obsolete });
     }
   } catch {
     message.textContent = 'Configuration could not be applied. Check browser extension permissions and try again.';

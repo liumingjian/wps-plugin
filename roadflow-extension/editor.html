@@ -13,10 +13,15 @@
       <span id="source-label"></span>
     </div>
     <span id="editor-status">正在打开正文</span>
-    <button id="return-to-oa" type="button" disabled>返回 OA</button>
+    <div class="editor-actions">
+      <button id="retry-verification" type="button" hidden>重新验证</button>
+      <button id="save-document" type="button" disabled>保存</button>
+      <button id="return-to-oa" type="button" disabled>返回 OA</button>
+    </div>
   </header>
   <main id="editor-host"></main>
   <script src="source-identity-contract.js"></script>
+  <script src="identity-gate.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>

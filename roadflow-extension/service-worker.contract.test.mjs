@@ -28,7 +28,11 @@ globalThis.chrome = {
     }
   },
   permissions: {
-    async contains({ origins }) { return origins[0] === 'https://oa.example.test/*'; }
+    async contains({ origins }) {
+      return JSON.stringify(origins) === JSON.stringify([
+        'https://oa.example.test/*', 'https://gateway.example.test/*'
+      ]);
+    }
   }
 };
 globalThis.importScripts = async () => {};
@@ -109,6 +113,7 @@ assert.deepEqual(successful[0].handoff, {
   title: 'Quarterly Report',
   filename: 'Quarterly Report.DOCX',
   expectedFormat: 'docx',
+  gatewayTemplate: configuration.gatewayTemplate,
   sourceIdentity: activation.sourceIdentity,
   cacheIdentity: successful[0].handoff.cacheIdentity,
   createdAt: 1_800_000_000_000,
@@ -116,6 +121,71 @@ assert.deepEqual(successful[0].handoff, {
 });
 assert.match(successful[0].handoff.cacheIdentity, /^[a-f0-9]{32}$/);
 assert.deepEqual(await consume(), { ok: false });
+
+const retryCreated = await new Promise(resolve => {
+  messageListener(
+    { type: 'create-reverification-handoff', previousHandoff: successful[0].handoff },
+    { url: created.editorURL, tab: { id: 7 } },
+    resolve
+  );
+});
+assert.equal(retryCreated.ok, true);
+assert.equal(retryCreated.returnURL, returnURL);
+
+const retryClaimed = await new Promise(resolve => {
+  messageListener({ type: 'claim-reverification' }, { url: returnURL, tab: { id: 7 } }, resolve);
+});
+assert.equal(retryClaimed.ok, true);
+assert.match(retryClaimed.handoffID, /^[a-f0-9]{64}$/);
+assert.notEqual(retryClaimed.handoffID, editorURL.searchParams.get('handoff'));
+assert.equal(retryClaimed.sourceURL, activation.sourceURL);
+assert.deepEqual(await new Promise(resolve => {
+  messageListener({ type: 'claim-reverification' }, { url: returnURL, tab: { id: 7 } }, resolve);
+}), { ok: false });
+
+const retryCompleted = await new Promise(resolve => {
+  messageListener(
+    {
+      type: 'complete-reverification-handoff',
+      handoffID: retryClaimed.handoffID,
+      sourceIdentity: activation.sourceIdentity
+    },
+    { url: returnURL, tab: { id: 7 } },
+    resolve
+  );
+});
+assert.equal(retryCompleted.ok, true);
+assert.doesNotMatch(retryCompleted.editorURL, /oa\.example|documents|Quarterly/i);
+const retryConsumed = await new Promise(resolve => {
+  messageListener(
+    { type: 'consume-editor-handoff', handoffID: retryClaimed.handoffID },
+    { url: retryCompleted.editorURL },
+    resolve
+  );
+});
+assert.equal(retryConsumed.ok, true);
+assert.deepEqual(retryConsumed.handoff.sourceIdentity, activation.sourceIdentity);
+assert.notEqual(retryConsumed.handoff.cacheIdentity, successful[0].handoff.cacheIdentity);
+assert.deepEqual(await new Promise(resolve => {
+  messageListener(
+    {
+      type: 'complete-reverification-handoff',
+      handoffID: retryClaimed.handoffID,
+      sourceIdentity: activation.sourceIdentity
+    },
+    { url: returnURL, tab: { id: 7 } },
+    resolve
+  );
+}), { ok: false });
+
+const invalidRetry = await new Promise(resolve => {
+  messageListener(
+    { type: 'create-reverification-handoff', previousHandoff: { ...successful[0].handoff, sourcePath: '/documents/Other.docx' } },
+    { url: created.editorURL, tab: { id: 7 } },
+    resolve
+  );
+});
+assert.deepEqual(invalidRetry, { ok: false });
 
 const docActivation = {
   returnURL,

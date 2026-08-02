@@ -3,9 +3,27 @@
 let configuration;
 const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
 
+async function resumeReverification() {
+  const claim = await chrome.runtime.sendMessage({ type: 'claim-reverification' });
+  if (!claim?.ok) return;
+  const identityResult = await RoadFlowSourceIdentity.derive(claim.sourceURL, 'docx');
+  if (!identityResult.ok) {
+    window.alert(identityResult.message);
+    return;
+  }
+  const completed = await chrome.runtime.sendMessage({
+    type: 'complete-reverification-handoff',
+    handoffID: claim.handoffID,
+    sourceIdentity: identityResult.identity
+  });
+  if (completed?.ok) location.replace(completed.editorURL);
+  else window.alert(VERIFICATION_FAILURE_MESSAGE);
+}
+
 chrome.runtime.sendMessage({ type: 'configuration' }).then(response => {
   if (response?.ok) configuration = response.configuration;
-});
+  return resumeReverification();
+}).catch(() => {});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.roadFlowIntegration) return;

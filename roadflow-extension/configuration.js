@@ -22,6 +22,16 @@ function originPattern(origin) {
   return `${origin}/*`;
 }
 
+function permissionPatterns(configuration) {
+  const gatewayURL = parseHTTPURL(
+    configuration.gatewayTemplate.replace(SOURCE_PATH_PLACEHOLDER, encodeURIComponent('/document.docx'))
+  );
+  return [...new Set([
+    originPattern(configuration.trustedOrigin),
+    originPattern(gatewayURL.origin)
+  ])];
+}
+
 function validate(input) {
   const originURL = parseHTTPURL(input?.trustedOrigin);
   if (!originURL || originURL.pathname !== '/' || originURL.search || originURL.hash) {
@@ -46,4 +56,6 @@ function validate(input) {
   });
 }
 
-globalThis.RoadFlowConfiguration = Object.freeze({ SOURCE_PATH_PLACEHOLDER, STORAGE_KEY, originPattern, validate });
+globalThis.RoadFlowConfiguration = Object.freeze({
+  SOURCE_PATH_PLACEHOLDER, STORAGE_KEY, originPattern, permissionPatterns, validate
+});
