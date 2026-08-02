@@ -92,6 +92,7 @@ async function openEditor(page, scenario = {}) {
 async function openPublicWorkflow(page) {
   const returnURL = 'https://oa.example.test/workflow/current?step=review#document';
   const sourcePath = '/UploadFiles/2026/Quarterly%20Report.DOCX';
+  const mockOAPage = await readFile(new URL('./testdata/mock-oa.html', import.meta.url));
   const sourceIdentity = {
     sourcePath,
     actualFormat: 'docx',
@@ -180,7 +181,7 @@ async function openPublicWorkflow(page) {
     if (url.pathname === '/workflow/current') {
       await route.fulfill({
         contentType: 'text/html',
-        body: `<!doctype html><html><body><a href="${sourcePath}">Quarterly Report</a><script src="/content.js"></script></body></html>`
+        body: mockOAPage
       });
       return;
     }

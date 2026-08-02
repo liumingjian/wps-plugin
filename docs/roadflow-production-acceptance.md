@@ -58,6 +58,20 @@ The supplier signs with `scripts/package-roadflow-crx.sh`. Record the resulting
 CRX hash. The automated browser uses a controlled WPS boundary and does not
 replace the target-machine tests below.
 
+### Temporary OA simulation
+
+When the customer OA is unavailable, `roadflow-extension/testdata/mock-oa.html`
+provides one ordinary `<a>` Document Link. `npm run test:browser` serves that
+page at the configured mock Origin and loads the production `content.js` and
+packaged editor assets. The test proves interception, same-tab replacement,
+Document Identity Gate success, explicit overwrite, Return, and fresh-handoff
+reopen through the public browser UI.
+
+The controlled boundary supplies source identity, Gateway receipt, and WPS
+NPAPI responses. Therefore this simulation is automated regression evidence,
+not authenticated customer OA, real Gateway, or target-machine acceptance. Keep
+the production result `NOT ACCEPTED` until those external checks are executed.
+
 ## Gateway deployment checks
 
 Confirm configuration and exercise each behavior against the real Gateway:
