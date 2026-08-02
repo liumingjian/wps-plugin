@@ -42,7 +42,10 @@ async function loadEditor({
   consumeResponse = { ok: true, handoff },
   openResults = [true],
   receiptMode = 'match',
-  activeDocument = true
+  activeDocument = true,
+  saveResults = [true],
+  confirmDiscard = true,
+  replaceError
 } = {}) {
   const elements = Object.fromEntries([
     'document-title', 'source-label', 'editor-status', 'editor-host',
@@ -59,7 +62,9 @@ async function loadEditor({
   }]));
   const messages = [];
   const documentOpens = [];
+  const documentSaves = [];
   const fetches = [];
+  const confirmations = [];
   let replacementURL;
   let now = 1_800_000_001_000;
   let objectCount = 0;
@@ -118,7 +123,14 @@ async function loadEditor({
           children: [],
           append(child) { this.children.push(child); },
           Application: {
-            ActiveDocument: activeDocument ? {} : undefined,
+            ActiveDocument: activeDocument ? {
+              saveURL_FormData(url, metadata) {
+                documentSaves.push({ url, metadata });
+                const result = saveResults[Math.min(documentSaves.length - 1, saveResults.length - 1)];
+                if (result instanceof Error) throw result;
+                return result;
+              }
+            } : undefined,
             openDocument(url, readOnly) {
               documentOpens.push({ url, readOnly });
               return openResult;
@@ -129,7 +141,14 @@ async function loadEditor({
     },
     location: {
       search,
-      replace(url) { replacementURL = url; }
+      replace(url) {
+        if (replaceError) throw replaceError;
+        replacementURL = url;
+      }
+    },
+    confirm(message) {
+      confirmations.push(message);
+      return confirmDiscard;
     }
   });
   vm.runInContext(identityContract, context, { filename: 'source-identity-contract.js' });
@@ -137,7 +156,7 @@ async function loadEditor({
   vm.runInContext(script, context, { filename: 'editor.js' });
   await settle(receiptMode === 'missing' ? 80 : 20);
   return {
-    elements, messages, documentOpens, fetches,
+    elements, messages, documentOpens, documentSaves, fetches, confirmations,
     replacementURL: () => replacementURL
   };
 }
@@ -161,6 +180,57 @@ assert.deepEqual(JSON.parse(JSON.stringify(verified.fetches)), [{
   url: `https://gateway.example.test/wps/v1/delivery-receipt?handoff=${firstHandoffID}`,
   options: { cache: 'no-store', credentials: 'omit' }
 }]);
+
+const saving = await loadEditor();
+const savePromise = saving.elements['save-document'].clickListener();
+const duplicateSave = saving.elements['save-document'].clickListener();
+assert.equal(saving.elements['save-document'].disabled, true);
+assert.equal(saving.elements['return-to-oa'].disabled, true);
+assert.equal(saving.elements['editor-status'].textContent, '正在保存');
+await savePromise;
+await duplicateSave;
+assert.deepEqual(saving.documentSaves, [{
+  url: 'https://oa.example.test/RoadFlow/uploadfiles/OfficeSave?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX',
+  metadata: 'formId:formeditor'
+}]);
+assert.equal(saving.elements['editor-status'].textContent, '已保存');
+assert.equal(saving.elements['save-document'].textContent, '保存');
+assert.equal(saving.elements['save-document'].disabled, false);
+assert.equal(saving.elements['return-to-oa'].disabled, false);
+assert.equal(saving.documentSaves.length, 1);
+saving.elements['return-to-oa'].clickListener();
+assert.equal(saving.replacementURL(), handoff.returnURL);
+
+const failedSave = await loadEditor({ saveResults: [false, true], confirmDiscard: false });
+await failedSave.elements['save-document'].clickListener();
+assert.equal(failedSave.elements['editor-host'].children.length, 1);
+assert.equal(failedSave.elements['editor-host'].className, 'unlocked');
+assert.equal(failedSave.elements['editor-status'].textContent, '保存失败');
+assert.equal(failedSave.elements['save-document'].textContent, '重试保存');
+assert.equal(failedSave.elements['save-document'].disabled, false);
+assert.equal(failedSave.elements['return-to-oa'].disabled, false);
+assert.equal(failedSave.documentSaves.length, 1);
+failedSave.elements['return-to-oa'].clickListener();
+assert.equal(failedSave.confirmations.length, 1);
+assert.equal(failedSave.replacementURL(), undefined);
+await failedSave.elements['save-document'].clickListener();
+assert.equal(failedSave.documentSaves.length, 2);
+assert.equal(failedSave.elements['editor-status'].textContent, '已保存');
+assert.equal(failedSave.replacementURL(), undefined);
+
+const discarded = await loadEditor({ saveResults: [new Error('OA rejected overwrite')] });
+await discarded.elements['save-document'].clickListener();
+discarded.elements['return-to-oa'].clickListener();
+assert.equal(discarded.confirmations.length, 1);
+assert.equal(discarded.replacementURL(), handoff.returnURL);
+
+const navigationFailure = await loadEditor({ replaceError: new Error('navigation blocked') });
+navigationFailure.elements['return-to-oa'].clickListener();
+assert.equal(navigationFailure.elements['editor-host'].children.length, 1);
+assert.equal(navigationFailure.elements['editor-host'].className, 'unlocked');
+assert.equal(navigationFailure.elements['return-to-oa'].disabled, false);
+assert.equal(navigationFailure.elements['editor-status'].textContent, '返回 OA 失败');
+
 verified.elements['return-to-oa'].clickListener();
 assert.equal(verified.replacementURL(), handoff.returnURL);
 

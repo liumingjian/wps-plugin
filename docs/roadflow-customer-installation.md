@@ -74,6 +74,34 @@ three states:
 Readiness does not claim that an individual Document is safe to edit. The
 Document Identity Gate performs that check for each Editor Handoff.
 
+## Implement the OA overwrite endpoint
+
+The customer OA must expose exactly
+`POST /RoadFlow/uploadfiles/OfficeSave?fileurl=<sourcePath>` under the configured
+Trusted OA Origin. The request uses the current OA browser session. Its multipart
+body must contain one `filedata`, one lowercase MD5 `md5sum` matching those exact
+bytes, and one `filename` compatibility value equal to `formId:formeditor`.
+`fileurl` is the sole Overwrite Target; multipart names, filenames, and metadata
+must never select or alter a server path.
+
+Decode and normalize `fileurl`, reject traversal, then authorize the current OA
+user against an exact server-managed Document mapping before reading the body.
+A DOCX target accepts only a bounded, structurally valid DOCX/OOXML package.
+Write the validated bytes to a temporary file in the target directory, flush it,
+and atomically rename it over an existing original. Any authentication,
+authorization, multipart, checksum, format, missing-original, or commit failure
+must leave the original bytes unchanged.
+
+Only a completed atomic rename returns HTTP 200 with `Success:true`, Code
+`overwrite_committed`, and `Data` containing the exact `fileurl`, stored
+`md5sum`, `format` (`docx`), and stored `bytes`. Failures return `Success:false`,
+a stable `Code`, a user-safe `Message`, and `Data:null`, using HTTP 400, 401, 403,
+404, or 500 as appropriate. Never encode a business failure in HTTP 2xx.
+
+The Go package `roadflowoa` is the executable reference for this endpoint. A
+customer OA implemented on another stack must pass the same HTTP and atomicity
+contract; it does not require or permit separate product middleware.
+
 ## Supplier packaging
 
 Unsigned staging is deterministic for a version and fails rather than replacing

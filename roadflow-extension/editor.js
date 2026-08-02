@@ -13,6 +13,7 @@ const RECEIPT_POLL_MS = 250;
 let currentHandoff;
 let wpsObject;
 let application;
+let editorState = 'opening';
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -114,6 +115,7 @@ async function waitForReceipt(receiptURL, handoffID, identity, attemptStartedAt)
 }
 
 function showVerificationFailure() {
+  editorState = 'verification-failed';
   destroyUnverifiedWPS();
   status.textContent = '验证失败，未开放编辑或保存。';
   retryButton.hidden = false;
@@ -123,6 +125,7 @@ function showVerificationFailure() {
 }
 
 async function verifyHandoff(handoffID, handoff) {
+  editorState = 'opening';
   currentHandoff = handoff;
   title.textContent = handoff.title;
   sourceLabel.textContent = handoff.sourcePath;
@@ -145,9 +148,56 @@ async function verifyHandoff(handoffID, handoff) {
   await waitForActiveDocument();
   await waitForReceipt(endpoints.receiptURL, handoffID, handoff.sourceIdentity, attemptStartedAt);
   host.className = 'unlocked';
+  editorState = 'editable';
   status.textContent = '正文可编辑';
+  saveButton.textContent = '保存';
   saveButton.disabled = false;
   returnButton.disabled = false;
+}
+
+function saveURL(handoff) {
+  const endpoint = new URL('/RoadFlow/uploadfiles/OfficeSave', handoff.trustedOrigin);
+  endpoint.search = `?fileurl=${encodeURIComponent(handoff.sourcePath)}`;
+  return endpoint.href;
+}
+
+async function saveDocument() {
+  if (!['editable', 'saved', 'save-failed'].includes(editorState)) return;
+  editorState = 'saving';
+  status.textContent = '正在保存';
+  saveButton.disabled = true;
+  returnButton.disabled = true;
+  try {
+    await delay(0);
+    if (application?.ActiveDocument?.saveURL_FormData(
+      saveURL(currentHandoff),
+      'formId:formeditor'
+    ) !== true) throw new Error('WPS did not confirm the overwrite.');
+    editorState = 'saved';
+    status.textContent = '已保存';
+    saveButton.textContent = '保存';
+  } catch {
+    editorState = 'save-failed';
+    status.textContent = '保存失败';
+    saveButton.textContent = '重试保存';
+  }
+  saveButton.disabled = false;
+  returnButton.disabled = false;
+}
+
+function returnToOA() {
+  if (!currentHandoff || ['opening', 'saving'].includes(editorState)) return;
+  if (editorState === 'save-failed' &&
+      !confirm('保存失败。放弃当前修改并返回 OA？')) return;
+  saveButton.disabled = true;
+  returnButton.disabled = true;
+  try {
+    location.replace(currentHandoff.returnURL);
+  } catch {
+    status.textContent = '返回 OA 失败';
+    saveButton.disabled = editorState === 'verification-failed';
+    returnButton.disabled = false;
+  }
 }
 
 async function consumeHandoff(handoffID) {
@@ -194,6 +244,7 @@ async function enterEditor() {
 }
 
 retryButton.addEventListener('click', () => void reverify().catch(showVerificationFailure));
-returnButton.addEventListener('click', () => location.replace(currentHandoff.returnURL));
+saveButton.addEventListener('click', saveDocument);
+returnButton.addEventListener('click', returnToOA);
 
 void enterEditor();
