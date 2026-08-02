@@ -141,6 +141,13 @@ func TestOfficeSaveDOCValidationFailuresPreserveTheOriginalDocument(t *testing.T
 		t.Fatal("DOC fixture does not contain the expected Word FIB")
 	}
 	invalidFIB[wordFIB] = 0
+	invalidLayout := append([]byte(nil), doc(t, "updated.doc")...)
+	wordFIB = bytes.Index(invalidLayout, []byte{0xec, 0xa5, 0xc1, 0x00})
+	if wordFIB < 0 {
+		t.Fatal("DOC fixture does not contain the expected Word FIB")
+	}
+	invalidLayout[wordFIB+32] = 0
+	invalidLayout[wordFIB+33] = 0
 
 	for _, test := range []struct {
 		name    string
@@ -148,6 +155,7 @@ func TestOfficeSaveDOCValidationFailuresPreserveTheOriginalDocument(t *testing.T
 	}{
 		{name: "CFB without WordDocument", payload: doc(t, "not-doc.cfb")},
 		{name: "invalid Word FIB", payload: invalidFIB},
+		{name: "incomplete Word FIB layout", payload: invalidLayout},
 		{name: "malformed CFB", payload: []byte("not a compound document")},
 	} {
 		t.Run(test.name, func(t *testing.T) {

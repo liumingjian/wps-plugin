@@ -13,7 +13,13 @@
     'http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument'
   ];
   const FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
-  const DOC_FIB_VERSIONS = new Set([0x00c1, 0x00d9, 0x0101, 0x010c, 0x0112]);
+  const DOC_FIB_LAYOUTS = [
+    { nFib: 0x00c1, fcLcbCount: 0x005d, cswNew: 0 },
+    { nFib: 0x00d9, fcLcbCount: 0x006c, cswNew: 2 },
+    { nFib: 0x0101, fcLcbCount: 0x0088, cswNew: 2 },
+    { nFib: 0x010c, fcLcbCount: 0x00a4, cswNew: 2 },
+    { nFib: 0x0112, fcLcbCount: 0x00b7, cswNew: 5 }
+  ];
   const LIMITS = Object.freeze({
     compressedBytes: RoadFlowSourceIdentityContract.MAX_COMPRESSED_BYTES,
     archiveMembers: 2048,
@@ -128,14 +134,39 @@
 
   function validateDOC(bytes) {
     const container = CFB.parse(bytes);
-    const wordDocument = CFB.find(container, 'WordDocument');
+    const rootPath = container.FullPaths?.[0];
+    if (typeof rootPath !== 'string' || !rootPath.endsWith('/')) throw new Error('Invalid CFB root');
+    const rootStream = name => {
+      const index = container.FullPaths.indexOf(`${rootPath}${name}`);
+      const entry = container.FileIndex?.[index];
+      return entry?.type === 2 ? entry : undefined;
+    };
+    const wordDocument = rootStream('WordDocument');
     const contents = wordDocument?.content;
-    if (!contents || contents.length < 4) throw new Error('Missing WordDocument stream');
-    const fibBytes = Uint8Array.from(contents.slice(0, 4));
+    if (!contents || contents.length < 154) throw new Error('Missing WordDocument FIB');
+    const fibBytes = Uint8Array.from(contents.slice(0, 2048));
     const fib = new DataView(fibBytes.buffer);
-    if (fib.getUint16(0, true) !== 0xa5ec || !DOC_FIB_VERSIONS.has(fib.getUint16(2, true))) {
+    const baseNFib = fib.getUint16(2, true);
+    const layout = DOC_FIB_LAYOUTS.find(candidate => candidate.fcLcbCount === fib.getUint16(152, true));
+    if (fib.getUint16(0, true) !== 0xa5ec || !layout) {
       throw new Error('Invalid Word FIB');
     }
+    const flags = fib.getUint16(10, true);
+    if (!(flags & 0x1000) || (flags & 0x0100) ||
+        ![0x00bf, 0x00c1].includes(fib.getUint16(12, true)) || fib.getUint32(14, true) !== 0 ||
+        fib.getUint8(18) !== 0 || (fib.getUint8(19) & 1) !== 0 ||
+        fib.getUint16(20, true) !== 0 || fib.getUint16(22, true) !== 0 ||
+        fib.getUint16(32, true) !== 0x000e || fib.getUint16(62, true) !== 0x0016) {
+      throw new Error('Invalid Word FIB base');
+    }
+    const cswNewOffset = 154 + layout.fcLcbCount * 8;
+    if (fibBytes.length < cswNewOffset + 2 + layout.cswNew * 2 ||
+        fib.getUint16(cswNewOffset, true) !== layout.cswNew ||
+        (layout.cswNew === 0 ? baseNFib !== layout.nFib : fib.getUint16(cswNewOffset + 2, true) !== layout.nFib)) {
+      throw new Error('Truncated Word FIB');
+    }
+    const tableName = flags & 0x0200 ? '1Table' : '0Table';
+    if (!rootStream(tableName)?.content?.length) throw new Error('Missing Word table stream');
   }
 
   async function validateDOCX(bytes) {

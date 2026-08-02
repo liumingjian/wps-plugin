@@ -29,6 +29,20 @@ const (
 	compatibilityData    = "formId:formeditor"
 )
 
+type docFIBLayout struct {
+	nFib       uint16
+	fcLcbCount uint16
+	cswNew     uint16
+}
+
+var docFIBLayouts = map[uint16]docFIBLayout{
+	0x005d: {nFib: 0x00c1, fcLcbCount: 0x005d, cswNew: 0},
+	0x006c: {nFib: 0x00d9, fcLcbCount: 0x006c, cswNew: 2},
+	0x0088: {nFib: 0x0101, fcLcbCount: 0x0088, cswNew: 2},
+	0x00a4: {nFib: 0x010c, fcLcbCount: 0x00a4, cswNew: 2},
+	0x00b7: {nFib: 0x0112, fcLcbCount: 0x00b7, cswNew: 5},
+}
+
 var md5Pattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 // OfficeSaveConfig binds authorized OA source paths to their server-managed Documents.
@@ -174,27 +188,72 @@ func validateWordDocument(payload []byte, format string) error {
 	return errors.New("unsupported Word format")
 }
 
+// ValidateFormatCompatibleDocument validates an actual Word serialization for OA and Gateway boundaries.
+func ValidateFormatCompatibleDocument(payload []byte, format string) error {
+	return validateWordDocument(payload, format)
+}
+
+// WordFormat returns the supported Word serialization declared by a source path.
+func WordFormat(sourcePath string) string { return wordFormat(sourcePath) }
+
+// ValidSourcePath reports whether a source path is normalized and safe for an exact mapping.
+func ValidSourcePath(sourcePath string) bool { return validSourcePath(sourcePath) }
+
+// MaxDocumentBytes is the maximum accepted serialized Word Document size.
+const MaxDocumentBytes = maxCompressedBytes
+
 func validateDOC(payload []byte) error {
 	container, err := mscfb.New(bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("invalid CFB container: %w", err)
 	}
-	for entry, err := container.Next(); err == nil; entry, err = container.Next() {
-		if entry.Name != "WordDocument" {
-			continue
+	rootStreams := map[string]*mscfb.File{}
+	for {
+		entry, err := container.Next()
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		var fib [4]byte
-		if _, err := io.ReadFull(entry, fib[:]); err != nil || binary.LittleEndian.Uint16(fib[:2]) != 0xa5ec {
-			return errors.New("invalid Word FIB")
+		if err != nil {
+			return fmt.Errorf("invalid CFB directory: %w", err)
 		}
-		switch binary.LittleEndian.Uint16(fib[2:]) {
-		case 0x00c1, 0x00d9, 0x0101, 0x010c, 0x0112:
-			return nil
-		default:
-			return errors.New("unsupported Word FIB version")
+		if len(entry.Path) == 0 && !entry.FileInfo().IsDir() {
+			rootStreams[entry.Name] = entry
 		}
 	}
-	return errors.New("WordDocument stream is missing")
+	wordDocument := rootStreams["WordDocument"]
+	if wordDocument == nil {
+		return errors.New("root WordDocument stream is missing")
+	}
+	fib, err := io.ReadAll(io.LimitReader(wordDocument, 2048))
+	if err != nil || len(fib) < 154 {
+		return errors.New("WordDocument FIB is missing or truncated")
+	}
+	baseNFib := binary.LittleEndian.Uint16(fib[2:4])
+	layout, supported := docFIBLayouts[binary.LittleEndian.Uint16(fib[152:154])]
+	flags := binary.LittleEndian.Uint16(fib[10:12])
+	if binary.LittleEndian.Uint16(fib[:2]) != 0xa5ec || !supported || flags&0x1000 == 0 || flags&0x0100 != 0 ||
+		(binary.LittleEndian.Uint16(fib[12:14]) != 0x00bf && binary.LittleEndian.Uint16(fib[12:14]) != 0x00c1) ||
+		binary.LittleEndian.Uint32(fib[14:18]) != 0 || fib[18] != 0 || fib[19]&1 != 0 ||
+		binary.LittleEndian.Uint16(fib[20:22]) != 0 || binary.LittleEndian.Uint16(fib[22:24]) != 0 ||
+		binary.LittleEndian.Uint16(fib[32:34]) != 0x000e || binary.LittleEndian.Uint16(fib[62:64]) != 0x0016 ||
+		binary.LittleEndian.Uint16(fib[152:154]) != layout.fcLcbCount {
+		return errors.New("invalid Word FIB")
+	}
+	cswNewOffset := 154 + int(layout.fcLcbCount)*8
+	if len(fib) < cswNewOffset+2+int(layout.cswNew)*2 ||
+		binary.LittleEndian.Uint16(fib[cswNewOffset:cswNewOffset+2]) != layout.cswNew ||
+		(layout.cswNew == 0 && baseNFib != layout.nFib) ||
+		(layout.cswNew != 0 && binary.LittleEndian.Uint16(fib[cswNewOffset+2:cswNewOffset+4]) != layout.nFib) {
+		return errors.New("invalid Word FIB variable layout")
+	}
+	tableName := "0Table"
+	if flags&0x0200 != 0 {
+		tableName = "1Table"
+	}
+	if table := rootStreams[tableName]; table == nil || table.Size == 0 {
+		return errors.New("Word table stream is missing")
+	}
+	return nil
 }
 
 func validSourcePath(value string) bool {

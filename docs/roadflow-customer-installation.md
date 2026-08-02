@@ -70,6 +70,9 @@ The Gateway must apply equivalent maintained CFB/OLE parsing before recording a
 DOC Gateway Delivery Receipt, including the `WordDocument` and FIB checks above.
 It records `actualFormat` as `doc` only after the complete DOC response has been
 delivered; malformed, incomplete, or oversized content produces no receipt.
+The Go package `roadflowgateway` is an executable reference for the fixed
+read-only delivery and receipt endpoints, exact fixed-CRX CORS policy, bounded
+receipt lifetime, conflicting-receipt behavior, and shared Word validation.
 
 ## Check readiness
 

@@ -48,14 +48,23 @@ async function docx(entries = {}) {
   return writer.close();
 }
 
-function doc({ wordDocument = true, validFIB = true } = {}) {
+function doc({ wordDocument = true, validFIB = true, completeFIB = true, tableStream = true } = {}) {
   const container = CFB.utils.cfb_new();
   if (wordDocument) {
-    const stream = new Uint8Array(512);
+    const stream = new Uint8Array(1024);
     const view = new DataView(stream.buffer);
     view.setUint16(0, validFIB ? 0xa5ec : 0, true);
     view.setUint16(2, 0x00c1, true);
+    if (completeFIB) {
+      view.setUint16(10, 0x1000, true);
+      view.setUint16(12, 0x00c1, true);
+      view.setUint16(32, 0x000e, true);
+      view.setUint16(62, 0x0016, true);
+      view.setUint16(152, 0x005d, true);
+      view.setUint16(898, 0, true);
+    }
     CFB.utils.cfb_add(container, 'WordDocument', stream);
+    if (tableStream) CFB.utils.cfb_add(container, '0Table', new Uint8Array(512));
   } else {
     CFB.utils.cfb_add(container, 'Workbook', new Uint8Array(512));
   }
@@ -131,7 +140,13 @@ assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), {
   }
 });
 
-for (const invalidDOC of [doc({ wordDocument: false }), doc({ validFIB: false }), sourceBytes]) {
+for (const invalidDOC of [
+  doc({ wordDocument: false }),
+  doc({ validFIB: false }),
+  doc({ completeFIB: false }),
+  doc({ tableStream: false }),
+  sourceBytes
+]) {
   nextResponse = sourceResponse(invalidDOC, { url: docURL });
   assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), failure);
 }

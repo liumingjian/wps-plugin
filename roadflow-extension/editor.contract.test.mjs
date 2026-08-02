@@ -105,7 +105,7 @@ async function loadEditor({
             actualFormat: expectedIdentity.actualFormat,
             byteCount: expectedIdentity.byteCount,
             sha256: receiptMode === 'mismatch' ? 'f'.repeat(64) : expectedIdentity.sha256,
-            deliveredAt: new FakeDate(now).toISOString()
+            deliveredAt: new FakeDate(receiptMode === 'stale' ? now - 31_000 : now).toISOString()
           };
         }
       };
@@ -339,6 +339,48 @@ const reopenedLegacyDOC = await loadEditor({
 assert.equal(reopenedLegacyDOC.elements['editor-host'].className, 'unlocked');
 assert.match(reopenedLegacyDOC.documentOpens[0].url, new RegExp(`_wpsHandoff=${freshDOCHandoffID}$`));
 assert.equal(reopenedLegacyDOC.elements['editor-status'].textContent, '正文可编辑');
+
+const docHandoff = {
+  ...handoff,
+  sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+  sourcePath: legacyDOCIdentity.sourcePath,
+  filename: 'Legacy.DOC',
+  expectedFormat: 'doc',
+  sourceIdentity: legacyDOCIdentity
+};
+for (const receiptMode of ['mismatch', 'conflict', 'missing', 'stale']) {
+  const rejectedDOC = await loadEditor({
+    consumeResponse: { ok: true, handoff: docHandoff },
+    receiptMode
+  });
+  assert.equal(rejectedDOC.elements['editor-host'].children.length, 0);
+  assert.equal(rejectedDOC.elements['save-document'].disabled, true);
+  assert.equal(rejectedDOC.elements['retry-verification'].hidden, false);
+  assert.equal(rejectedDOC.overwriteCalls.length, 0);
+}
+
+const recoverableDOC = await loadEditor({
+  consumeResponse: { ok: true, handoff: docHandoff },
+  overwriteResults: [false, true],
+  confirmDiscard: false
+});
+const liveDOCWPS = recoverableDOC.elements['editor-host'].children[0];
+await recoverableDOC.elements['save-document'].clickListener();
+assert.equal(recoverableDOC.elements['editor-host'].children[0], liveDOCWPS);
+assert.equal(recoverableDOC.elements['save-document'].textContent, '重试保存');
+recoverableDOC.elements['return-to-oa'].clickListener();
+assert.equal(recoverableDOC.replacementURL(), undefined);
+await recoverableDOC.elements['save-document'].clickListener();
+assert.equal(recoverableDOC.overwriteCalls.length, 2);
+assert.equal(recoverableDOC.elements['editor-status'].textContent, '已保存');
+
+const discardedDOC = await loadEditor({
+  consumeResponse: { ok: true, handoff: docHandoff },
+  overwriteResults: [false]
+});
+await discardedDOC.elements['save-document'].clickListener();
+discardedDOC.elements['return-to-oa'].clickListener();
+assert.equal(discardedDOC.replacementURL(), handoff.returnURL);
 
 verified.elements['return-to-oa'].clickListener();
 assert.equal(verified.replacementURL(), handoff.returnURL);
