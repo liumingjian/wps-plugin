@@ -115,11 +115,9 @@ assert.deepEqual(successful[0].handoff, {
   expectedFormat: 'docx',
   gatewayTemplate: configuration.gatewayTemplate,
   sourceIdentity: activation.sourceIdentity,
-  cacheIdentity: successful[0].handoff.cacheIdentity,
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
 });
-assert.equal(successful[0].handoff.cacheIdentity, editorURL.searchParams.get('handoff'));
 assert.deepEqual(await consume(), { ok: false });
 
 const retryCreated = await new Promise(resolve => {
@@ -165,8 +163,6 @@ const retryConsumed = await new Promise(resolve => {
 });
 assert.equal(retryConsumed.ok, true);
 assert.deepEqual(retryConsumed.handoff.sourceIdentity, activation.sourceIdentity);
-assert.notEqual(retryConsumed.handoff.cacheIdentity, successful[0].handoff.cacheIdentity);
-assert.equal(retryConsumed.handoff.cacheIdentity, retryClaimed.handoffID);
 assert.deepEqual(await new Promise(resolve => {
   messageListener(
     {

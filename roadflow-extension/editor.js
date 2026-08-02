@@ -32,7 +32,6 @@ function validatedHandoff(value, handoffID) {
       typeof value.sourceURL !== 'string' || typeof value.sourcePath !== 'string' ||
       typeof value.title !== 'string' || typeof value.filename !== 'string' ||
       typeof value.gatewayTemplate !== 'string' || !['doc', 'docx'].includes(value.expectedFormat) ||
-      value.cacheIdentity !== handoffID ||
       (value.expectedFormat === 'docx' && !identity) ||
       !Number.isFinite(value.createdAt) || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now()) return undefined;
   try {
@@ -42,7 +41,7 @@ function validatedHandoff(value, handoffID) {
         !['http:', 'https:'].includes(sourceURL.protocol) || sourceURL.username || sourceURL.password ||
         sourceURL.origin !== value.trustedOrigin || sourceURL.pathname !== value.sourcePath || !value.sourcePath.startsWith('/') ||
         !new RegExp(`\\.${value.expectedFormat}$`, 'i').test(value.sourcePath)) return undefined;
-    RoadFlowIdentityGate.endpoints(value.gatewayTemplate, value.sourcePath, value.cacheIdentity);
+    RoadFlowIdentityGate.endpoints(value.gatewayTemplate, value.sourcePath, handoffID);
   } catch {
     return undefined;
   }

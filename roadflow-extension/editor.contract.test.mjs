@@ -29,7 +29,6 @@ const handoff = {
   expectedFormat: 'docx',
   gatewayTemplate: 'https://gateway.example.test/wps/v1/document?fileurl={sourcePath}',
   sourceIdentity,
-  cacheIdentity: firstHandoffID,
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
 };
@@ -194,11 +193,7 @@ for (const [search, response] of [
   ['', undefined],
   ['?handoff=../report.docx', undefined],
   [`?handoff=${firstHandoffID}`, { ok: false }],
-  [`?handoff=${firstHandoffID}`, { ok: true, handoff: {} }],
-  [`?handoff=${firstHandoffID}`, {
-    ok: true,
-    handoff: { ...handoff, cacheIdentity: 'f'.repeat(64) }
-  }]
+  [`?handoff=${firstHandoffID}`, { ok: true, handoff: {} }]
 ]) {
   const unavailable = await loadEditor({ search, consumeResponse: response });
   assert.equal(unavailable.elements['editor-host'].children.length, 0);
