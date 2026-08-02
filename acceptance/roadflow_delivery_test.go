@@ -62,7 +62,7 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		t.Fatalf("RoadFlow packaged entry points = %+v", manifest)
 	}
 	if len(manifest.ContentScripts) != 1 || strings.Join(manifest.ContentScripts[0].Matches, ",") != "http://*/*,https://*/*" ||
-		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
+		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,cfb.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
 		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
 	}
 	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html" ||
@@ -73,7 +73,8 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	for _, name := range []string{
 		"configuration.js", "content.js", "editor.css", "editor.html", "editor.js",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
-		"readiness.js", "service-worker.js", "source-identity-contract.js", "source-identity.js", "zip-core.min.js", "zip-js.LICENSE",
+		"readiness.js", "service-worker.js", "source-identity-contract.js", "source-identity.js",
+		"zip-core.min.js", "zip-js.LICENSE", "cfb.min.js", "cfb.LICENSE",
 	} {
 		if _, err := os.Stat(filepath.Join(extensionRoot, name)); err != nil {
 			t.Errorf("staged RoadFlow asset %s: %v", name, err)
@@ -172,7 +173,7 @@ func TestRoadFlowCRXPackagingAndCustomerGuidanceStayOnTheBrowserRoute(t *testing
 		"Trusted OA Origin", "Gateway URL template", "exactly one `{sourcePath}`", "without rebuilding",
 		"Configuration required", "WPS or browser plugin unavailable", "Environment ready",
 		"read-only", "byte-preserving", "trusted office network", "No DEB", "historical",
-		"@zip.js/zip.js 2.8.34", "2,048 archive members", "100:1", "25 MiB", "100 MiB", "not retained",
+		"@zip.js/zip.js 2.8.34", "CFB 1.2.2", "mscfb v1.0.7", "WordDocument", "2,048 archive members", "100:1", "25 MiB", "100 MiB", "not retained",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "adr", "0006-use-browser-hosted-wps-for-roadflow.md"), []string{
 		"designated Kylin", "Qaxbrowser", "NPAPI", "RoadFlow", "ADR 0001", "ADR 0005", "separate extension identity",

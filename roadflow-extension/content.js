@@ -6,7 +6,7 @@ const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was 
 async function resumeReverification() {
   const claim = await chrome.runtime.sendMessage({ type: 'claim-reverification' });
   if (!claim?.ok) return;
-  const identityResult = await RoadFlowSourceIdentity.derive(claim.sourceURL, 'docx');
+  const identityResult = await RoadFlowSourceIdentity.derive(claim.sourceURL, claim.expectedFormat);
   if (!identityResult.ok) {
     window.alert(identityResult.message);
     return;
@@ -33,33 +33,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 async function enterPackagedEditor(source, title) {
   const expectedFormat = /\.docx$/i.test(source.pathname) ? 'docx' : 'doc';
-  let sourceIdentity;
-  if (expectedFormat === 'docx') {
-    const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
-    if (!identityResult.ok) {
-      window.alert(identityResult.message);
-      return;
-    }
-    sourceIdentity = identityResult.identity;
-  } else {
-    const response = await fetch(source.href, {
-      cache: 'no-store',
-      credentials: 'include',
-      redirect: 'manual'
-    });
-    if (response.redirected || response.type === 'opaqueredirect' ||
-        (response.status >= 300 && response.status < 400)) {
-      try { await response.body?.cancel(); } catch {}
-      location.assign(source.href);
-      return;
-    }
+  const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
+  if (!identityResult.ok) {
+    window.alert(identityResult.message);
+    return;
   }
   const activation = {
     returnURL: location.href,
     sourceURL: source.href,
     title
   };
-  if (sourceIdentity) activation.sourceIdentity = sourceIdentity;
+  activation.sourceIdentity = identityResult.identity;
   const response = await chrome.runtime.sendMessage({
     type: 'create-editor-handoff',
     activation

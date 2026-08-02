@@ -51,16 +51,17 @@ function editorSender(sender) {
 }
 
 function validatedEditorContext(value, configuration) {
+  const expectedFormat = value?.expectedFormat;
   if (!value || typeof value.returnURL !== 'string' || typeof value.sourceURL !== 'string' ||
       typeof value.sourcePath !== 'string' || typeof value.title !== 'string' ||
-      typeof value.filename !== 'string' || value.expectedFormat !== 'docx' ||
+      typeof value.filename !== 'string' || !['doc', 'docx'].includes(expectedFormat) ||
       value.trustedOrigin !== configuration.trustedOrigin || value.gatewayTemplate !== configuration.gatewayTemplate) return undefined;
   try {
     const returnURL = new URL(value.returnURL);
     const sourceURL = new URL(value.sourceURL);
     if (returnURL.origin !== configuration.trustedOrigin || sourceURL.origin !== configuration.trustedOrigin ||
         sourceURL.username || sourceURL.password || sourceURL.pathname !== value.sourcePath ||
-        !/\.docx$/i.test(sourceURL.pathname)) return undefined;
+        !new RegExp(`\\.${expectedFormat}$`, 'i').test(sourceURL.pathname)) return undefined;
   } catch {
     return undefined;
   }
@@ -71,7 +72,7 @@ function validatedEditorContext(value, configuration) {
     sourcePath: value.sourcePath,
     title: value.title,
     filename: value.filename,
-    expectedFormat: 'docx',
+    expectedFormat,
     gatewayTemplate: configuration.gatewayTemplate
   };
 }
@@ -119,10 +120,12 @@ async function createEditorHandoff(activation, sender) {
     ? activation.title.trim().slice(0, 256)
     : filename;
   const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
-  const sourceIdentity = expectedFormat === 'docx'
-    ? RoadFlowSourceIdentityContract.validate(activation.sourceIdentity, sourcePath, expectedFormat)
-    : undefined;
-  if (expectedFormat === 'docx' && !sourceIdentity) return { ok: false };
+  const sourceIdentity = RoadFlowSourceIdentityContract.validate(
+    activation.sourceIdentity,
+    sourcePath,
+    expectedFormat
+  );
+  if (!sourceIdentity) return { ok: false };
   const stored = await storeHandoff({
     returnURL: sender.url,
     trustedOrigin: configuration.trustedOrigin,
@@ -132,7 +135,7 @@ async function createEditorHandoff(activation, sender) {
     filename,
     expectedFormat,
     gatewayTemplate: configuration.gatewayTemplate,
-    ...(sourceIdentity ? { sourceIdentity } : {})
+    sourceIdentity
   });
   const editorURL = new URL(chrome.runtime.getURL('editor.html'));
   editorURL.searchParams.set('handoff', stored.handoffID);
@@ -165,6 +168,7 @@ async function createReverificationHandoff(previousHandoff, sender) {
       handoffID: stored.handoffID,
       returnURL: context.returnURL,
       sourceURL: context.sourceURL,
+      expectedFormat: context.expectedFormat,
       expiresAt: stored.handoff.expiresAt
     };
     await chrome.storage.session.set({ [REVERIFICATION_STORAGE_KEY]: reverifications });
@@ -181,7 +185,12 @@ function claimReverification(sender) {
     delete reverifications[sender.tab.id];
     await chrome.storage.session.set({ [REVERIFICATION_STORAGE_KEY]: reverifications });
     if (!request || request.returnURL !== sender.url || request.expiresAt <= Date.now()) return { ok: false };
-    return { ok: true, handoffID: request.handoffID, sourceURL: request.sourceURL };
+    return {
+      ok: true,
+      handoffID: request.handoffID,
+      sourceURL: request.sourceURL,
+      expectedFormat: request.expectedFormat
+    };
   });
 }
 

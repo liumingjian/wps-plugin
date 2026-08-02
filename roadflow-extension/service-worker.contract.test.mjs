@@ -187,7 +187,13 @@ assert.deepEqual(invalidRetry, { ok: false });
 const docActivation = {
   returnURL,
   sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
-  title: 'Legacy Document'
+  title: 'Legacy Document',
+  sourceIdentity: {
+    sourcePath: '/documents/Legacy.DOC',
+    actualFormat: 'doc',
+    byteCount: 3072,
+    sha256: 'b'.repeat(64)
+  }
 };
 const createdDoc = await new Promise(resolve => {
   messageListener({ type: 'create-editor-handoff', activation: docActivation }, { url: returnURL, tab: { id: 7 } }, resolve);
@@ -199,7 +205,7 @@ const consumedDoc = await new Promise(resolve => {
 });
 assert.equal(consumedDoc.ok, true);
 assert.equal(consumedDoc.handoff.expectedFormat, 'doc');
-assert.equal('sourceIdentity' in consumedDoc.handoff, false);
+assert.deepEqual(consumedDoc.handoff.sourceIdentity, docActivation.sourceIdentity);
 
 for (const sourceIdentity of [
   undefined,

@@ -110,6 +110,13 @@ assert.deepEqual(messages, [
 assert.equal(replacementURL, 'chrome-extension://fixed/editor.html?handoff=opaque-id');
 
 const docMessageCount = messages.length;
+const validDOCIdentity = {
+  sourcePath: '/documents/Legacy.DOC',
+  actualFormat: 'doc',
+  byteCount: 3072,
+  sha256: 'b'.repeat(64)
+};
+nextIdentityResult = { ok: true, identity: validDOCIdentity };
 clickListener({
   isTrusted: true,
   button: 0,
@@ -124,16 +131,18 @@ clickListener({
   }
 });
 await new Promise(resolve => setImmediate(resolve));
-assert.deepEqual(docFetches, [{
-  url: 'https://oa.example.test/documents/Legacy.DOC',
-  options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
-}]);
+assert.deepEqual(identityRequests.at(-1), {
+  sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+  expectedFormat: 'doc'
+});
+assert.deepEqual(docFetches, []);
 assert.deepEqual(messages.at(-1), {
   type: 'create-editor-handoff',
   activation: {
     returnURL: 'https://oa.example.test/workflow/current?step=review#document',
     sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
-    title: 'Legacy Document'
+    title: 'Legacy Document',
+    sourceIdentity: validDOCIdentity
   }
 });
 assert.equal(messages.length, docMessageCount + 1);

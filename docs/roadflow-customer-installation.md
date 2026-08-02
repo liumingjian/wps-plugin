@@ -44,21 +44,32 @@ the configured Gateway path, using the fresh `_wpsHandoff` value and the exact
 decoded source path. Gateway Delivery Receipt lookup must allow the fixed CRX Origin and must
 return a conflict response rather than choosing between duplicate records.
 
-## DOCX source validation policy
+## Word source validation policy
 
 Before an Editor Handoff is issued, the extension reads the exact same-Origin
-DOCX source with the current OA browser session and rejects redirects and
+DOC or DOCX source with the current OA browser session and rejects redirects and
 non-success responses. The packaged parser is `@zip.js/zip.js 2.8.34`; its
 BSD-3-Clause license is included as `zip-js.LICENSE`.
+
+Legacy DOC uses the maintained SheetJS CFB 1.2.2 parser; its Apache-2.0 license
+is included as `cfb.LICENSE`. A DOC must be a parseable CFB/OLE container with a
+`WordDocument` stream and a supported Word 97-2007 binary FIB version. A CFB
+signature by itself, or a CFB container for another Office format, is rejected.
 
 Validation permits at most 25 MiB of compressed source data, 2,048 archive members,
 a 100:1 aggregate expansion ratio, and 100 MiB of aggregate
 uncompressed data. The limits are checked from ZIP central-directory metadata
 before any OOXML member is expanded. The required content-types, package
 relationship, and main WordprocessingML Document parts must be well-formed and
-consistent with a DOCX path. Only the exact source path, actual format, byte
+consistent with a DOCX path. DOC input is subject to the same 25 MiB source
+limit. Only the exact source path, actual format, byte
 count, and SHA-256 identity are placed in session-scoped Editor Handoff state;
 the source Document bytes are not retained.
+
+The Gateway must apply equivalent maintained CFB/OLE parsing before recording a
+DOC Gateway Delivery Receipt, including the `WordDocument` and FIB checks above.
+It records `actualFormat` as `doc` only after the complete DOC response has been
+delivered; malformed, incomplete, or oversized content produces no receipt.
 
 ## Check readiness
 
@@ -86,7 +97,9 @@ must never select or alter a server path.
 
 Decode and normalize `fileurl`, reject traversal, then authorize the current OA
 user against an exact server-managed Document mapping before reading the body.
-A DOCX target accepts only a bounded, structurally valid DOCX/OOXML package.
+A DOCX target accepts only a bounded, structurally valid DOCX/OOXML package. A
+DOC target accepts only a CFB/OLE container with a valid `WordDocument` FIB.
+DOC and DOCX serializations are never accepted for each other's Overwrite Targets.
 Write the validated bytes to a temporary file in the target directory, flush it,
 and atomically rename it over an existing original. Any authentication,
 authorization, multipart, checksum, format, missing-original, or commit failure
@@ -94,13 +107,14 @@ must leave the original bytes unchanged.
 
 Only a completed atomic rename returns HTTP 200 with `Success:true`, Code
 `overwrite_committed`, and `Data` containing the exact `fileurl`, stored
-`md5sum`, `format` (`docx`), and stored `bytes`. Failures return `Success:false`,
+`md5sum`, `format` (`doc` or `docx`), and stored `bytes`. Failures return `Success:false`,
 a stable `Code`, a user-safe `Message`, and `Data:null`, using HTTP 400, 401, 403,
 404, or 500 as appropriate. Never encode a business failure in HTTP 2xx.
 
-The Go package `roadflowoa` is the executable reference for this endpoint. A
-customer OA implemented on another stack must pass the same HTTP and atomicity
-contract; it does not require or permit separate product middleware.
+The Go package `roadflowoa` is the executable reference for this endpoint. It
+uses `github.com/richardlehane/mscfb v1.0.7` for maintained CFB/OLE parsing. A
+customer OA implemented on another stack must pass the same HTTP, format, and
+atomicity contract; it does not require or permit separate product middleware.
 
 ## Supplier packaging
 

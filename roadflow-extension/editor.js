@@ -41,7 +41,7 @@ function validatedHandoff(value, handoffID) {
       typeof value.sourceURL !== 'string' || typeof value.sourcePath !== 'string' ||
       typeof value.title !== 'string' || typeof value.filename !== 'string' ||
       typeof value.gatewayTemplate !== 'string' || !['doc', 'docx'].includes(value.expectedFormat) ||
-      (value.expectedFormat === 'docx' && !identity) ||
+      !identity ||
       !Number.isFinite(value.createdAt) || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now()) return undefined;
   try {
     const returnURL = new URL(value.returnURL);
@@ -143,7 +143,6 @@ async function verifyHandoff(handoffID, handoff) {
   saveButton.disabled = true;
   returnButton.disabled = true;
 
-  if (handoff.expectedFormat !== 'docx') throw new Error('Legacy DOC verification is not available.');
   const attemptStartedAt = Date.now();
   const endpoints = RoadFlowIdentityGate.endpoints(
     handoff.gatewayTemplate, handoff.sourcePath, handoffID

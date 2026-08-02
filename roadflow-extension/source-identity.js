@@ -13,6 +13,7 @@
     'http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument'
   ];
   const FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
+  const DOC_FIB_VERSIONS = new Set([0x00c1, 0x00d9, 0x0101, 0x010c, 0x0112]);
   const LIMITS = Object.freeze({
     compressedBytes: RoadFlowSourceIdentityContract.MAX_COMPRESSED_BYTES,
     archiveMembers: 2048,
@@ -125,10 +126,49 @@
     return bytes;
   }
 
+  function validateDOC(bytes) {
+    const container = CFB.parse(bytes);
+    const wordDocument = CFB.find(container, 'WordDocument');
+    const contents = wordDocument?.content;
+    if (!contents || contents.length < 4) throw new Error('Missing WordDocument stream');
+    const fibBytes = Uint8Array.from(contents.slice(0, 4));
+    const fib = new DataView(fibBytes.buffer);
+    if (fib.getUint16(0, true) !== 0xa5ec || !DOC_FIB_VERSIONS.has(fib.getUint16(2, true))) {
+      throw new Error('Invalid Word FIB');
+    }
+  }
+
+  async function validateDOCX(bytes) {
+    zip.configure({ useWebWorkers: false });
+    const reader = new zip.ZipReader(new zip.Uint8ArrayReader(bytes));
+    try {
+      const entries = await reader.getEntries();
+      validateArchive(entries);
+      const entriesByName = new Map(entries.map(entry => [entry.filename, entry]));
+      const requiredNames = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml'];
+      if (!requiredNames.every(name => entriesByName.has(name))) throw new Error('Missing OOXML member');
+      const requiredNameSet = new Set(requiredNames);
+      const files = new Map();
+      const expandedState = { byteCount: 0 };
+      for (const entry of entries) {
+        if (entry.directory) continue;
+        const retain = requiredNameSet.has(entry.filename);
+        const xmlMember = /(?:\.xml|\.rels)$/i.test(entry.filename);
+        const contents = await readArchiveMember(entry, retain || xmlMember, expandedState);
+        if (xmlMember) parseXMLDocument(contents);
+        if (retain) files.set(entry.filename, contents);
+      }
+      validatePackageXML(files);
+    } finally {
+      await reader.close();
+    }
+  }
+
   async function derive(sourceURL, expectedFormat) {
     try {
       const source = new URL(sourceURL);
-      if (expectedFormat !== 'docx' || !/\.docx$/i.test(source.pathname)) throw new Error('Format mismatch');
+      if (!['doc', 'docx'].includes(expectedFormat) ||
+          !new RegExp(`\\.${expectedFormat}$`, 'i').test(source.pathname)) throw new Error('Format mismatch');
       const requestURL = new URL(source.href);
       requestURL.hash = '';
       const response = await fetch(requestURL.href, {
@@ -145,36 +185,15 @@
         throw new Error('Compressed size limit exceeded');
       }
       const bytes = await readBoundedSource(response);
-      zip.configure({ useWebWorkers: false });
-      const reader = new zip.ZipReader(new zip.Uint8ArrayReader(bytes));
-      try {
-        const entries = await reader.getEntries();
-        validateArchive(entries);
-        const entriesByName = new Map(entries.map(entry => [entry.filename, entry]));
-        const requiredNames = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml'];
-        if (!requiredNames.every(name => entriesByName.has(name))) throw new Error('Missing OOXML member');
-        const requiredNameSet = new Set(requiredNames);
-        const files = new Map();
-        const expandedState = { byteCount: 0 };
-        for (const entry of entries) {
-          if (entry.directory) continue;
-          const retain = requiredNameSet.has(entry.filename);
-          const xmlMember = /(?:\.xml|\.rels)$/i.test(entry.filename);
-          const contents = await readArchiveMember(entry, retain || xmlMember, expandedState);
-          if (xmlMember) parseXMLDocument(contents);
-          if (retain) files.set(entry.filename, contents);
-        }
-        validatePackageXML(files);
-      } finally {
-        await reader.close();
-      }
+      if (expectedFormat === 'docx') await validateDOCX(bytes);
+      else validateDOC(bytes);
 
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
       return {
         ok: true,
         identity: {
           sourcePath: source.pathname,
-          actualFormat: 'docx',
+          actualFormat: expectedFormat,
           byteCount: bytes.byteLength,
           sha256: Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
         }

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 vm.runInThisContext(await readFile(new URL('./zip-core.min.js', import.meta.url), 'utf8'), { filename: 'zip-core.min.js' });
+vm.runInThisContext(await readFile(new URL('./cfb.min.js', import.meta.url), 'utf8'), { filename: 'cfb.min.js' });
 zip.configure({ useWebWorkers: false });
 
 class TestDOMParser {
@@ -45,6 +46,20 @@ async function docx(entries = {}) {
     await writer.add(name, new zip.TextReader(contents));
   }
   return writer.close();
+}
+
+function doc({ wordDocument = true, validFIB = true } = {}) {
+  const container = CFB.utils.cfb_new();
+  if (wordDocument) {
+    const stream = new Uint8Array(512);
+    const view = new DataView(stream.buffer);
+    view.setUint16(0, validFIB ? 0xa5ec : 0, true);
+    view.setUint16(2, 0x00c1, true);
+    CFB.utils.cfb_add(container, 'WordDocument', stream);
+  } else {
+    CFB.utils.cfb_add(container, 'Workbook', new Uint8Array(512));
+  }
+  return Uint8Array.from(CFB.write(container, { type: 'buffer', fileType: 'cfb' }));
 }
 
 const sourceBytes = await docx();
@@ -102,6 +117,35 @@ assert.deepEqual(fetches, [{
   options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
 }]);
 
+const failure = { ok: false, message: 'Document verification failed. Editing was not opened.' };
+const docURL = 'https://oa.example.test/documents/Legacy.DOC';
+const docBytes = doc();
+nextResponse = sourceResponse(docBytes, { url: docURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Legacy.DOC',
+    actualFormat: 'doc',
+    byteCount: docBytes.byteLength,
+    sha256: createHash('sha256').update(docBytes).digest('hex')
+  }
+});
+
+for (const invalidDOC of [doc({ wordDocument: false }), doc({ validFIB: false }), sourceBytes]) {
+  nextResponse = sourceResponse(invalidDOC, { url: docURL });
+  assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), failure);
+}
+
+nextResponse = sourceResponse(docBytes, {
+  url: docURL,
+  headers: { get() { return String(25 * 1024 * 1024 + 1); } },
+  body: { getReader() { throw new Error('oversized DOC response body was read'); } }
+});
+assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), failure);
+
+nextResponse = sourceResponse(docBytes, { url: docURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'docx'), failure);
+
 const strictRelationships = relationships.replace(
   'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',
   'http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument'
@@ -121,7 +165,6 @@ nextResponse = sourceResponse(sourceBytes);
 assert.equal((await RoadFlowSourceIdentity.derive(fragmentURL, 'docx')).ok, true);
 assert.equal(fetches.at(-1).url, sourceURL);
 
-const failure = { ok: false, message: 'Document verification failed. Editing was not opened.' };
 for (const response of [
   sourceResponse(sourceBytes, { ok: false, status: 401 }),
   sourceResponse(sourceBytes, { ok: false, status: 500 }),

@@ -287,6 +287,59 @@ assert.match(reopened.documentOpens[0].url, new RegExp(`_wpsHandoff=${freshHando
 assert.equal(reopened.elements['editor-host'].className, 'unlocked');
 assert.equal(reopened.elements['editor-status'].textContent, '正文可编辑');
 
+const legacyDOCIdentity = {
+  sourcePath: '/documents/Legacy.DOC',
+  actualFormat: 'doc',
+  byteCount: 3072,
+  sha256: 'd'.repeat(64)
+};
+const legacyDOC = await loadEditor({
+  consumeResponse: {
+    ok: true,
+    handoff: {
+      ...handoff,
+      sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+      sourcePath: legacyDOCIdentity.sourcePath,
+      filename: 'Legacy.DOC',
+      expectedFormat: 'doc',
+      sourceIdentity: legacyDOCIdentity
+    }
+  }
+});
+assert.equal(legacyDOC.elements['editor-host'].className, 'unlocked');
+assert.equal(legacyDOC.elements['save-document'].disabled, false);
+assert.deepEqual(legacyDOC.documentOpens, [{
+  url: `https://gateway.example.test/wps/v1/document?fileurl=%2Fdocuments%2FLegacy.DOC&_wpsHandoff=${firstHandoffID}`,
+  readOnly: false
+}]);
+await legacyDOC.elements['save-document'].clickListener();
+assert.deepEqual(legacyDOC.overwriteCalls, [{
+  url: 'https://oa.example.test/RoadFlow/uploadfiles/OfficeSave?fileurl=%2Fdocuments%2FLegacy.DOC',
+  metadata: 'formId:formeditor'
+}]);
+legacyDOC.elements['return-to-oa'].clickListener();
+assert.equal(legacyDOC.replacementURL(), handoff.returnURL);
+
+const freshDOCHandoffID = '9'.repeat(64);
+const committedDOCIdentity = { ...legacyDOCIdentity, byteCount: 3584, sha256: '9'.repeat(64) };
+const reopenedLegacyDOC = await loadEditor({
+  search: `?handoff=${freshDOCHandoffID}`,
+  consumeResponse: {
+    ok: true,
+    handoff: {
+      ...handoff,
+      sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
+      sourcePath: committedDOCIdentity.sourcePath,
+      filename: 'Legacy.DOC',
+      expectedFormat: 'doc',
+      sourceIdentity: committedDOCIdentity
+    }
+  }
+});
+assert.equal(reopenedLegacyDOC.elements['editor-host'].className, 'unlocked');
+assert.match(reopenedLegacyDOC.documentOpens[0].url, new RegExp(`_wpsHandoff=${freshDOCHandoffID}$`));
+assert.equal(reopenedLegacyDOC.elements['editor-status'].textContent, '正文可编辑');
+
 verified.elements['return-to-oa'].clickListener();
 assert.equal(verified.replacementURL(), handoff.returnURL);
 

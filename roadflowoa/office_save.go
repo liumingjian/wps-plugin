@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/md5"
+	"encoding/binary"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -17,6 +18,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/richardlehane/mscfb"
 )
 
 const (
@@ -62,8 +65,8 @@ func NewOfficeSaveHandler(config OfficeSaveConfig) (http.Handler, error) {
 	}
 	documents := make(map[string]string, len(config.Documents))
 	for sourcePath, target := range config.Documents {
-		if !validSourcePath(sourcePath) || !strings.EqualFold(filepath.Ext(sourcePath), ".docx") || target == "" {
-			return nil, fmt.Errorf("invalid DOCX Overwrite Target mapping %q", sourcePath)
+		if !validSourcePath(sourcePath) || wordFormat(sourcePath) == "" || target == "" {
+			return nil, fmt.Errorf("invalid Word Overwrite Target mapping %q", sourcePath)
 		}
 		documents[sourcePath] = target
 	}
@@ -131,8 +134,9 @@ func (handler *officeSaveHandler) ServeHTTP(response http.ResponseWriter, reques
 		writeFailure(response, http.StatusBadRequest, "checksum_mismatch", "The Document checksum did not match.")
 		return
 	}
-	if err := validateDOCX(payload); err != nil {
-		writeFailure(response, http.StatusBadRequest, "format_mismatch", "The submitted Document is not a valid DOCX.")
+	format := wordFormat(sourcePath)
+	if err := validateWordDocument(payload, format); err != nil {
+		writeFailure(response, http.StatusBadRequest, "format_mismatch", "The submitted Document format does not match the Overwrite Target.")
 		return
 	}
 	if err := atomicReplace(target, payload, info.Mode().Perm()); err != nil {
@@ -144,9 +148,53 @@ func (handler *officeSaveHandler) ServeHTTP(response http.ResponseWriter, reques
 		Code:    "overwrite_committed",
 		Message: "Document overwritten.",
 		Data: &overwriteReceipt{
-			FileURL: sourcePath, MD5Sum: storedMD5, Format: "docx", Bytes: len(payload),
+			FileURL: sourcePath, MD5Sum: storedMD5, Format: format, Bytes: len(payload),
 		},
 	})
+}
+
+func wordFormat(sourcePath string) string {
+	switch {
+	case strings.EqualFold(filepath.Ext(sourcePath), ".docx"):
+		return "docx"
+	case strings.EqualFold(filepath.Ext(sourcePath), ".doc"):
+		return "doc"
+	default:
+		return ""
+	}
+}
+
+func validateWordDocument(payload []byte, format string) error {
+	if format == "docx" {
+		return validateDOCX(payload)
+	}
+	if format == "doc" {
+		return validateDOC(payload)
+	}
+	return errors.New("unsupported Word format")
+}
+
+func validateDOC(payload []byte) error {
+	container, err := mscfb.New(bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("invalid CFB container: %w", err)
+	}
+	for entry, err := container.Next(); err == nil; entry, err = container.Next() {
+		if entry.Name != "WordDocument" {
+			continue
+		}
+		var fib [4]byte
+		if _, err := io.ReadFull(entry, fib[:]); err != nil || binary.LittleEndian.Uint16(fib[:2]) != 0xa5ec {
+			return errors.New("invalid Word FIB")
+		}
+		switch binary.LittleEndian.Uint16(fib[2:]) {
+		case 0x00c1, 0x00d9, 0x0101, 0x010c, 0x0112:
+			return nil
+		default:
+			return errors.New("unsupported Word FIB version")
+		}
+	}
+	return errors.New("WordDocument stream is missing")
 }
 
 func validSourcePath(value string) bool {

@@ -21,7 +21,10 @@ import (
 	"github.com/liumingjian/wps-plugin/roadflowoa"
 )
 
-const sourcePath = "/UploadFiles/2026/quarterly-report.docx"
+const (
+	sourcePath    = "/UploadFiles/2026/quarterly-report.docx"
+	docSourcePath = "/UploadFiles/2026/legacy-report.doc"
+)
 
 func TestOfficeSaveCommitsOnlyTheAuthorizedDOCXAndReturnsStrictReceipt(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "quarterly-report.docx")
@@ -60,6 +63,108 @@ func TestOfficeSaveCommitsOnlyTheAuthorizedDOCXAndReturnsStrictReceipt(t *testin
 	}
 	if !bytes.Equal(stored, updated) {
 		t.Fatal("committed Document does not contain the submitted edit")
+	}
+}
+
+func TestOfficeSaveCommitsOnlyTheAuthorizedDOCAndReturnsStrictReceipt(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "legacy-report.doc")
+	original := doc(t, "original.doc")
+	updated := doc(t, "updated.doc")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := submit(t, officeSaveHandlerFor(t, docSourcePath, target), docSourcePath, updated, "", "formId:formeditor", true)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var receipt struct {
+		Success bool   `json:"Success"`
+		Code    string `json:"Code"`
+		Data    struct {
+			FileURL string `json:"fileurl"`
+			MD5Sum  string `json:"md5sum"`
+			Format  string `json:"format"`
+			Bytes   int    `json:"bytes"`
+		} `json:"Data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Success || receipt.Code != "overwrite_committed" || receipt.Data.FileURL != docSourcePath ||
+		receipt.Data.MD5Sum != checksum(updated) || receipt.Data.Format != "doc" || receipt.Data.Bytes != len(updated) {
+		t.Fatalf("Overwrite Receipt = %+v", receipt)
+	}
+	stored, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, updated) {
+		t.Fatal("committed DOC does not contain the submitted edit")
+	}
+}
+
+func TestOfficeSaveRejectsSerializationChangesForDOCAndDOCXTargets(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourcePath string
+		original   []byte
+		payload    []byte
+	}{
+		{name: "DOC target receives DOCX", sourcePath: docSourcePath, original: doc(t, "original.doc"), payload: docx(t, "wrong serialization")},
+		{name: "DOCX target receives DOC", sourcePath: sourcePath, original: docx(t, "original"), payload: doc(t, "updated.doc")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), filepath.Base(test.sourcePath))
+			if err := os.WriteFile(target, test.original, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			response := submit(t, officeSaveHandlerFor(t, test.sourcePath, target), test.sourcePath, test.payload, "", "formId:formeditor", true)
+			assertFailure(t, response, http.StatusBadRequest, "format_mismatch")
+			stored, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(stored, test.original) {
+				t.Fatal("format mismatch changed original bytes")
+			}
+		})
+	}
+}
+
+func TestOfficeSaveDOCValidationFailuresPreserveTheOriginalDocument(t *testing.T) {
+	original := doc(t, "original.doc")
+	invalidFIB := append([]byte(nil), doc(t, "updated.doc")...)
+	wordFIB := bytes.Index(invalidFIB, []byte{0xec, 0xa5, 0xc1, 0x00})
+	if wordFIB < 0 {
+		t.Fatal("DOC fixture does not contain the expected Word FIB")
+	}
+	invalidFIB[wordFIB] = 0
+
+	for _, test := range []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "CFB without WordDocument", payload: doc(t, "not-doc.cfb")},
+		{name: "invalid Word FIB", payload: invalidFIB},
+		{name: "malformed CFB", payload: []byte("not a compound document")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "legacy-report.doc")
+			if err := os.WriteFile(target, original, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			response := submit(t, officeSaveHandlerFor(t, docSourcePath, target), docSourcePath, test.payload, "", "formId:formeditor", true)
+			assertFailure(t, response, http.StatusBadRequest, "format_mismatch")
+			stored, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(stored, original) {
+				t.Fatal("invalid DOC changed original bytes")
+			}
+		})
 	}
 }
 
@@ -296,16 +401,29 @@ func TestOfficeSaveMissingOriginalAndCommitFailureHaveNoSuccessReceipt(t *testin
 }
 
 func officeSaveHandler(t *testing.T, target string) http.Handler {
+	return officeSaveHandlerFor(t, sourcePath, target)
+}
+
+func officeSaveHandlerFor(t *testing.T, documentPath, target string) http.Handler {
 	t.Helper()
 	handler, err := roadflowoa.NewOfficeSaveHandler(roadflowoa.OfficeSaveConfig{
-		Documents:     map[string]string{sourcePath: target},
+		Documents:     map[string]string{documentPath: target},
 		Authenticated: func(request *http.Request) bool { return request.Header.Get("Cookie") == "oa_session=valid" },
-		Authorized:    func(_ *http.Request, path string) bool { return path == sourcePath },
+		Authorized:    func(_ *http.Request, path string) bool { return path == documentPath },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return handler
+}
+
+func doc(t *testing.T, name string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return content
 }
 
 func submit(t *testing.T, handler http.Handler, path string, payload []byte, md5sum, metadata string, authenticated bool) *httptest.ResponseRecorder {
