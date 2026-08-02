@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/liumingjian/wps-plugin/roadflowoa"
@@ -60,6 +63,126 @@ func TestOfficeSaveCommitsOnlyTheAuthorizedDOCXAndReturnsStrictReceipt(t *testin
 	}
 }
 
+func TestCommittedOverwritePassesAFreshHandoffAndReopens(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.docx")
+	if err := os.WriteFile(target, docx(t, "original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	overwrite := officeSaveHandler(t, target)
+	const freshHandoff = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	var receiptMu sync.Mutex
+	var deliveryReceipt map[string]any
+
+	mux := http.NewServeMux()
+	mux.Handle("POST /RoadFlow/uploadfiles/OfficeSave", overwrite)
+	mux.HandleFunc("GET "+sourcePath, func(response http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Cookie") != "oa_session=valid" {
+			http.Error(response, "session required", http.StatusUnauthorized)
+			return
+		}
+		content, err := os.ReadFile(target)
+		if err != nil {
+			http.Error(response, "missing", http.StatusNotFound)
+			return
+		}
+		response.Header().Set("Cache-Control", "no-store")
+		_, _ = response.Write(content)
+	})
+	mux.HandleFunc("GET /wps/document", func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("fileurl") != sourcePath || request.URL.Query().Get("_wpsHandoff") != freshHandoff {
+			http.Error(response, "invalid handoff", http.StatusForbidden)
+			return
+		}
+		content, err := os.ReadFile(target)
+		if err != nil {
+			http.Error(response, "missing", http.StatusNotFound)
+			return
+		}
+		digest := fmt.Sprintf("%x", sha256.Sum256(content))
+		receiptMu.Lock()
+		deliveryReceipt = map[string]any{
+			"handoff": freshHandoff, "sourcePath": sourcePath, "actualFormat": "docx",
+			"byteCount": len(content), "sha256": digest,
+		}
+		receiptMu.Unlock()
+		_, _ = response.Write(content)
+	})
+	mux.HandleFunc("GET /wps/delivery-receipt", func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("handoff") != freshHandoff {
+			http.Error(response, "invalid handoff", http.StatusForbidden)
+			return
+		}
+		receiptMu.Lock()
+		defer receiptMu.Unlock()
+		if deliveryReceipt == nil {
+			http.Error(response, "not delivered", http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(response).Encode(deliveryReceipt)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	committed := docx(t, "committed edit rendered after reopen")
+	body, contentType := multipartRequest(t, committed, "")
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/RoadFlow/uploadfiles/OfficeSave?fileurl="+sourcePath, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", contentType)
+	request.Header.Set("Cookie", "oa_session=valid")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("overwrite status = %d", response.StatusCode)
+	}
+
+	sourceRequest, err := http.NewRequest(http.MethodGet, server.URL+sourcePath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceRequest.Header.Set("Cookie", "oa_session=valid")
+	sourceResponse, err := http.DefaultClient.Do(sourceRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceBytes, _ := io.ReadAll(sourceResponse.Body)
+	sourceResponse.Body.Close()
+	if sourceResponse.StatusCode != http.StatusOK {
+		t.Fatalf("fresh Edit Entry source status = %d", sourceResponse.StatusCode)
+	}
+	gatewayResponse, err := http.Get(server.URL + "/wps/document?fileurl=" + sourcePath + "&_wpsHandoff=" + freshHandoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openedBytes, _ := io.ReadAll(gatewayResponse.Body)
+	gatewayResponse.Body.Close()
+	if gatewayResponse.StatusCode != http.StatusOK {
+		t.Fatalf("fresh Gateway open status = %d", gatewayResponse.StatusCode)
+	}
+	receiptResponse, err := http.Get(server.URL + "/wps/delivery-receipt?handoff=" + freshHandoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var freshReceipt map[string]any
+	if receiptResponse.StatusCode != http.StatusOK {
+		t.Fatalf("fresh receipt status = %d", receiptResponse.StatusCode)
+	}
+	if err := json.NewDecoder(receiptResponse.Body).Decode(&freshReceipt); err != nil {
+		t.Fatal(err)
+	}
+	receiptResponse.Body.Close()
+	committedSHA256 := fmt.Sprintf("%x", sha256.Sum256(committed))
+	if !bytes.Equal(sourceBytes, committed) || !bytes.Equal(openedBytes, committed) ||
+		freshReceipt["handoff"] != freshHandoff || freshReceipt["sourcePath"] != sourcePath ||
+		freshReceipt["sha256"] != committedSHA256 || freshReceipt["byteCount"] != float64(len(committed)) {
+		t.Fatalf("fresh reopen did not render committed Document: receipt=%+v", freshReceipt)
+	}
+}
+
 func TestOfficeSaveFailuresPreserveTheOriginalDocument(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -73,6 +196,7 @@ func TestOfficeSaveFailuresPreserveTheOriginalDocument(t *testing.T) {
 	}{
 		{name: "missing session", path: sourcePath, payload: docx(t, "edit"), authorized: false, status: 401, code: "session_required"},
 		{name: "traversal", path: "/UploadFiles/2026/../secret.docx", payload: docx(t, "edit"), authorized: true, status: 403, code: "overwrite_forbidden"},
+		{name: "double encoded traversal", path: "/UploadFiles/2026/%252e%252e/secret.docx", payload: docx(t, "edit"), authorized: true, status: 403, code: "overwrite_forbidden"},
 		{name: "unauthorized path", path: "/UploadFiles/2026/other.docx", payload: docx(t, "edit"), authorized: true, status: 403, code: "overwrite_forbidden"},
 		{name: "wrong checksum", path: sourcePath, payload: docx(t, "edit"), md5sum: strings.Repeat("0", 32), metadata: "formId:formeditor", authorized: true, status: 400, code: "checksum_mismatch"},
 		{name: "wrong metadata", path: sourcePath, payload: docx(t, "edit"), metadata: "sourcePath:/UploadFiles/redirect.docx", authorized: true, status: 400, code: "invalid_multipart"},
@@ -101,6 +225,56 @@ func TestOfficeSaveFailuresPreserveTheOriginalDocument(t *testing.T) {
 				t.Fatal("failed overwrite changed original bytes")
 			}
 		})
+	}
+}
+
+func TestOfficeSaveRequiresEveryExactMultipartField(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.docx")
+	original := docx(t, "original")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, variant := range []string{"md5sum", "filename", "filedata", "extra"} {
+		t.Run(variant, func(t *testing.T) {
+			body, contentType := multipartRequest(t, docx(t, "edit"), variant)
+			request := httptest.NewRequest(http.MethodPost, "/RoadFlow/uploadfiles/OfficeSave?fileurl="+sourcePath, body)
+			request.Header.Set("Content-Type", contentType)
+			request.Header.Set("Cookie", "oa_session=valid")
+			response := httptest.NewRecorder()
+			officeSaveHandler(t, target).ServeHTTP(response, request)
+			assertFailure(t, response, http.StatusBadRequest, "invalid_multipart")
+			stored, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(stored, original) {
+				t.Fatal("invalid multipart changed original bytes")
+			}
+		})
+	}
+}
+
+func TestOfficeSaveDoesNotRecreateAnOriginalThatVanishesBeforeCommit(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.docx")
+	if err := os.WriteFile(target, docx(t, "original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, contentType := multipartRequest(t, docx(t, "edit"), "")
+	request := httptest.NewRequest(http.MethodPost, "/RoadFlow/uploadfiles/OfficeSave?fileurl="+sourcePath, &removeOnFirstRead{
+		Reader: body,
+		remove: func() {
+			if err := os.Remove(target); err != nil {
+				t.Errorf("remove original during request: %v", err)
+			}
+		},
+	})
+	request.Header.Set("Content-Type", contentType)
+	request.Header.Set("Cookie", "oa_session=valid")
+	response := httptest.NewRecorder()
+	officeSaveHandler(t, target).ServeHTTP(response, request)
+	assertFailure(t, response, http.StatusInternalServerError, "commit_failed")
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed conditional overwrite recreated target: %v", err)
 	}
 }
 
@@ -161,6 +335,47 @@ func submit(t *testing.T, handler http.Handler, path string, payload []byte, md5
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func multipartRequest(t *testing.T, payload []byte, omittedOrExtra string) (*bytes.Reader, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if omittedOrExtra != "md5sum" {
+		_ = writer.WriteField("md5sum", checksum(payload))
+	}
+	if omittedOrExtra != "filename" {
+		_ = writer.WriteField("filename", "formId:formeditor")
+	}
+	if omittedOrExtra != "filedata" {
+		part, err := writer.CreateFormFile("filedata", "ignored.docx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if omittedOrExtra == "extra" {
+		_ = writer.WriteField("sourcePath", "/UploadFiles/redirect.docx")
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return bytes.NewReader(body.Bytes()), writer.FormDataContentType()
+}
+
+type removeOnFirstRead struct {
+	io.Reader
+	remove func()
+}
+
+func (reader *removeOnFirstRead) Read(buffer []byte) (int, error) {
+	if reader.remove != nil {
+		reader.remove()
+		reader.remove = nil
+	}
+	return reader.Reader.Read(buffer)
 }
 
 func assertFailure(t *testing.T, response *httptest.ResponseRecorder, status int, code string) {

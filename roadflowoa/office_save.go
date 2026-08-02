@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -92,12 +93,16 @@ func (handler *officeSaveHandler) ServeHTTP(response http.ResponseWriter, reques
 		writeFailure(response, http.StatusForbidden, "overwrite_forbidden", "Document overwrite is not authorized.")
 		return
 	}
-	info, err := os.Stat(target)
+	info, err := os.Lstat(target)
 	if errors.Is(err, os.ErrNotExist) {
 		writeFailure(response, http.StatusNotFound, "original_missing", "The original Document no longer exists.")
 		return
 	}
 	if err != nil {
+		writeFailure(response, http.StatusInternalServerError, "commit_failed", "The Document could not be committed.")
+		return
+	}
+	if !info.Mode().IsRegular() {
 		writeFailure(response, http.StatusInternalServerError, "commit_failed", "The Document could not be committed.")
 		return
 	}
@@ -145,8 +150,11 @@ func (handler *officeSaveHandler) ServeHTTP(response http.ResponseWriter, reques
 }
 
 func validSourcePath(value string) bool {
-	return strings.HasPrefix(value, "/") && !strings.ContainsAny(value, "\\\x00") &&
-		path.Clean(value) == value && !strings.Contains(value, "//")
+	decoded, err := url.PathUnescape(value)
+	return err == nil && strings.HasPrefix(value, "/") && strings.HasPrefix(decoded, "/") &&
+		!strings.ContainsAny(value, "\\\x00") && !strings.ContainsAny(decoded, "\\\x00") &&
+		path.Clean(value) == value && path.Clean(decoded) == decoded &&
+		!strings.Contains(value, "//") && !strings.Contains(decoded, "//")
 }
 
 func multipartDocument(request *http.Request) (io.ReadCloser, string, bool) {
@@ -158,31 +166,6 @@ func multipartDocument(request *http.Request) (io.ReadCloser, string, bool) {
 	}
 	file, err := form.File["filedata"][0].Open()
 	return file, form.Value["md5sum"][0], err == nil
-}
-
-func atomicReplace(target string, payload []byte, mode os.FileMode) error {
-	temporary, err := os.CreateTemp(filepath.Dir(target), ".office-save-*")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}()
-	if err := temporary.Chmod(mode); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(payload); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporaryPath, target)
 }
 
 func validateDOCX(payload []byte) error {

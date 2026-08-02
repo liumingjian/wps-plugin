@@ -10,10 +10,18 @@ const returnButton = document.querySelector('#return-to-oa');
 const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
 const RECEIPT_TIMEOUT_MS = 10_000;
 const RECEIPT_POLL_MS = 250;
+const EDITOR_STATE = Object.freeze({
+  OPENING: 'opening',
+  EDITABLE: 'editable',
+  OVERWRITING: 'overwriting',
+  OVERWRITTEN: 'overwritten',
+  RECOVERABLE_OVERWRITE_FAILURE: 'recoverable-overwrite-failure',
+  VERIFICATION_FAILED: 'verification-failed'
+});
 let currentHandoff;
 let wpsObject;
 let application;
-let editorState = 'opening';
+let editorState = EDITOR_STATE.OPENING;
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -115,7 +123,7 @@ async function waitForReceipt(receiptURL, handoffID, identity, attemptStartedAt)
 }
 
 function showVerificationFailure() {
-  editorState = 'verification-failed';
+  editorState = EDITOR_STATE.VERIFICATION_FAILED;
   destroyUnverifiedWPS();
   status.textContent = '验证失败，未开放编辑或保存。';
   retryButton.hidden = false;
@@ -125,7 +133,7 @@ function showVerificationFailure() {
 }
 
 async function verifyHandoff(handoffID, handoff) {
-  editorState = 'opening';
+  editorState = EDITOR_STATE.OPENING;
   currentHandoff = handoff;
   title.textContent = handoff.title;
   sourceLabel.textContent = handoff.sourcePath;
@@ -148,36 +156,37 @@ async function verifyHandoff(handoffID, handoff) {
   await waitForActiveDocument();
   await waitForReceipt(endpoints.receiptURL, handoffID, handoff.sourceIdentity, attemptStartedAt);
   host.className = 'unlocked';
-  editorState = 'editable';
+  editorState = EDITOR_STATE.EDITABLE;
   status.textContent = '正文可编辑';
   saveButton.textContent = '保存';
   saveButton.disabled = false;
   returnButton.disabled = false;
 }
 
-function saveURL(handoff) {
+function officeSaveOverwriteURL(handoff) {
   const endpoint = new URL('/RoadFlow/uploadfiles/OfficeSave', handoff.trustedOrigin);
   endpoint.search = `?fileurl=${encodeURIComponent(handoff.sourcePath)}`;
   return endpoint.href;
 }
 
-async function saveDocument() {
-  if (!['editable', 'saved', 'save-failed'].includes(editorState)) return;
-  editorState = 'saving';
+async function submitOverwrite() {
+  if (![EDITOR_STATE.EDITABLE, EDITOR_STATE.OVERWRITTEN,
+    EDITOR_STATE.RECOVERABLE_OVERWRITE_FAILURE].includes(editorState)) return;
+  editorState = EDITOR_STATE.OVERWRITING;
   status.textContent = '正在保存';
   saveButton.disabled = true;
   returnButton.disabled = true;
   try {
     await delay(0);
     if (application?.ActiveDocument?.saveURL_FormData(
-      saveURL(currentHandoff),
+      officeSaveOverwriteURL(currentHandoff),
       'formId:formeditor'
     ) !== true) throw new Error('WPS did not confirm the overwrite.');
-    editorState = 'saved';
+    editorState = EDITOR_STATE.OVERWRITTEN;
     status.textContent = '已保存';
     saveButton.textContent = '保存';
   } catch {
-    editorState = 'save-failed';
+    editorState = EDITOR_STATE.RECOVERABLE_OVERWRITE_FAILURE;
     status.textContent = '保存失败';
     saveButton.textContent = '重试保存';
   }
@@ -186,8 +195,8 @@ async function saveDocument() {
 }
 
 function returnToOA() {
-  if (!currentHandoff || ['opening', 'saving'].includes(editorState)) return;
-  if (editorState === 'save-failed' &&
+  if (!currentHandoff || [EDITOR_STATE.OPENING, EDITOR_STATE.OVERWRITING].includes(editorState)) return;
+  if (editorState === EDITOR_STATE.RECOVERABLE_OVERWRITE_FAILURE &&
       !confirm('保存失败。放弃当前修改并返回 OA？')) return;
   saveButton.disabled = true;
   returnButton.disabled = true;
@@ -195,7 +204,7 @@ function returnToOA() {
     location.replace(currentHandoff.returnURL);
   } catch {
     status.textContent = '返回 OA 失败';
-    saveButton.disabled = editorState === 'verification-failed';
+    saveButton.disabled = editorState === EDITOR_STATE.VERIFICATION_FAILED;
     returnButton.disabled = false;
   }
 }
@@ -244,7 +253,12 @@ async function enterEditor() {
 }
 
 retryButton.addEventListener('click', () => void reverify().catch(showVerificationFailure));
-saveButton.addEventListener('click', saveDocument);
+saveButton.addEventListener('click', submitOverwrite);
 returnButton.addEventListener('click', returnToOA);
+addEventListener('beforeunload', event => {
+  if (editorState !== EDITOR_STATE.OVERWRITING) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 
 void enterEditor();

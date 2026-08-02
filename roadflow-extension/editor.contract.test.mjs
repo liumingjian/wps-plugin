@@ -43,7 +43,7 @@ async function loadEditor({
   openResults = [true],
   receiptMode = 'match',
   activeDocument = true,
-  saveResults = [true],
+  overwriteResults = [true],
   confirmDiscard = true,
   replaceError
 } = {}) {
@@ -62,9 +62,10 @@ async function loadEditor({
   }]));
   const messages = [];
   const documentOpens = [];
-  const documentSaves = [];
+  const overwriteCalls = [];
   const fetches = [];
   const confirmations = [];
+  const windowListeners = {};
   let replacementURL;
   let now = 1_800_000_001_000;
   let objectCount = 0;
@@ -93,16 +94,17 @@ async function loadEditor({
       if (receiptMode === 'missing') return { ok: false, status: 404 };
       if (receiptMode === 'conflict') return { ok: false, status: 409 };
       const receiptHandoff = new URL(url).searchParams.get('handoff');
+      const expectedIdentity = consumeResponse?.handoff?.sourceIdentity || sourceIdentity;
       return {
         ok: true,
         status: 200,
         async json() {
           return {
             handoff: receiptHandoff,
-            sourcePath: sourceIdentity.sourcePath,
-            actualFormat: sourceIdentity.actualFormat,
-            byteCount: sourceIdentity.byteCount,
-            sha256: receiptMode === 'mismatch' ? 'f'.repeat(64) : sourceIdentity.sha256,
+            sourcePath: expectedIdentity.sourcePath,
+            actualFormat: expectedIdentity.actualFormat,
+            byteCount: expectedIdentity.byteCount,
+            sha256: receiptMode === 'mismatch' ? 'f'.repeat(64) : expectedIdentity.sha256,
             deliveredAt: new FakeDate(now).toISOString()
           };
         }
@@ -125,8 +127,8 @@ async function loadEditor({
           Application: {
             ActiveDocument: activeDocument ? {
               saveURL_FormData(url, metadata) {
-                documentSaves.push({ url, metadata });
-                const result = saveResults[Math.min(documentSaves.length - 1, saveResults.length - 1)];
+                overwriteCalls.push({ url, metadata });
+                const result = overwriteResults[Math.min(overwriteCalls.length - 1, overwriteResults.length - 1)];
                 if (result instanceof Error) throw result;
                 return result;
               }
@@ -149,6 +151,9 @@ async function loadEditor({
     confirm(message) {
       confirmations.push(message);
       return confirmDiscard;
+    },
+    addEventListener(type, listener) {
+      windowListeners[type] = listener;
     }
   });
   vm.runInContext(identityContract, context, { filename: 'source-identity-contract.js' });
@@ -156,7 +161,7 @@ async function loadEditor({
   vm.runInContext(script, context, { filename: 'editor.js' });
   await settle(receiptMode === 'missing' ? 80 : 20);
   return {
-    elements, messages, documentOpens, documentSaves, fetches, confirmations,
+    elements, messages, documentOpens, overwriteCalls, fetches, confirmations, windowListeners,
     replacementURL: () => replacementURL
   };
 }
@@ -181,44 +186,52 @@ assert.deepEqual(JSON.parse(JSON.stringify(verified.fetches)), [{
   options: { cache: 'no-store', credentials: 'omit' }
 }]);
 
-const saving = await loadEditor();
-const savePromise = saving.elements['save-document'].clickListener();
-const duplicateSave = saving.elements['save-document'].clickListener();
-assert.equal(saving.elements['save-document'].disabled, true);
-assert.equal(saving.elements['return-to-oa'].disabled, true);
-assert.equal(saving.elements['editor-status'].textContent, '正在保存');
-await savePromise;
-await duplicateSave;
-assert.deepEqual(saving.documentSaves, [{
+const overwriting = await loadEditor();
+const overwritePromise = overwriting.elements['save-document'].clickListener();
+const duplicateOverwrite = overwriting.elements['save-document'].clickListener();
+assert.equal(overwriting.elements['save-document'].disabled, true);
+assert.equal(overwriting.elements['return-to-oa'].disabled, true);
+assert.equal(overwriting.elements['editor-status'].textContent, '正在保存');
+const unloadEvent = {
+  defaultPrevented: false,
+  returnValue: undefined,
+  preventDefault() { this.defaultPrevented = true; }
+};
+overwriting.windowListeners.beforeunload(unloadEvent);
+assert.equal(unloadEvent.defaultPrevented, true);
+assert.equal(unloadEvent.returnValue, '');
+await overwritePromise;
+await duplicateOverwrite;
+assert.deepEqual(overwriting.overwriteCalls, [{
   url: 'https://oa.example.test/RoadFlow/uploadfiles/OfficeSave?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX',
   metadata: 'formId:formeditor'
 }]);
-assert.equal(saving.elements['editor-status'].textContent, '已保存');
-assert.equal(saving.elements['save-document'].textContent, '保存');
-assert.equal(saving.elements['save-document'].disabled, false);
-assert.equal(saving.elements['return-to-oa'].disabled, false);
-assert.equal(saving.documentSaves.length, 1);
-saving.elements['return-to-oa'].clickListener();
-assert.equal(saving.replacementURL(), handoff.returnURL);
+assert.equal(overwriting.elements['editor-status'].textContent, '已保存');
+assert.equal(overwriting.elements['save-document'].textContent, '保存');
+assert.equal(overwriting.elements['save-document'].disabled, false);
+assert.equal(overwriting.elements['return-to-oa'].disabled, false);
+assert.equal(overwriting.overwriteCalls.length, 1);
+overwriting.elements['return-to-oa'].clickListener();
+assert.equal(overwriting.replacementURL(), handoff.returnURL);
 
-const failedSave = await loadEditor({ saveResults: [false, true], confirmDiscard: false });
-await failedSave.elements['save-document'].clickListener();
-assert.equal(failedSave.elements['editor-host'].children.length, 1);
-assert.equal(failedSave.elements['editor-host'].className, 'unlocked');
-assert.equal(failedSave.elements['editor-status'].textContent, '保存失败');
-assert.equal(failedSave.elements['save-document'].textContent, '重试保存');
-assert.equal(failedSave.elements['save-document'].disabled, false);
-assert.equal(failedSave.elements['return-to-oa'].disabled, false);
-assert.equal(failedSave.documentSaves.length, 1);
-failedSave.elements['return-to-oa'].clickListener();
-assert.equal(failedSave.confirmations.length, 1);
-assert.equal(failedSave.replacementURL(), undefined);
-await failedSave.elements['save-document'].clickListener();
-assert.equal(failedSave.documentSaves.length, 2);
-assert.equal(failedSave.elements['editor-status'].textContent, '已保存');
-assert.equal(failedSave.replacementURL(), undefined);
+const recoverableFailure = await loadEditor({ overwriteResults: [false, true], confirmDiscard: false });
+await recoverableFailure.elements['save-document'].clickListener();
+assert.equal(recoverableFailure.elements['editor-host'].children.length, 1);
+assert.equal(recoverableFailure.elements['editor-host'].className, 'unlocked');
+assert.equal(recoverableFailure.elements['editor-status'].textContent, '保存失败');
+assert.equal(recoverableFailure.elements['save-document'].textContent, '重试保存');
+assert.equal(recoverableFailure.elements['save-document'].disabled, false);
+assert.equal(recoverableFailure.elements['return-to-oa'].disabled, false);
+assert.equal(recoverableFailure.overwriteCalls.length, 1);
+recoverableFailure.elements['return-to-oa'].clickListener();
+assert.equal(recoverableFailure.confirmations.length, 1);
+assert.equal(recoverableFailure.replacementURL(), undefined);
+await recoverableFailure.elements['save-document'].clickListener();
+assert.equal(recoverableFailure.overwriteCalls.length, 2);
+assert.equal(recoverableFailure.elements['editor-status'].textContent, '已保存');
+assert.equal(recoverableFailure.replacementURL(), undefined);
 
-const discarded = await loadEditor({ saveResults: [new Error('OA rejected overwrite')] });
+const discarded = await loadEditor({ overwriteResults: [new Error('OA rejected overwrite')] });
 await discarded.elements['save-document'].clickListener();
 discarded.elements['return-to-oa'].clickListener();
 assert.equal(discarded.confirmations.length, 1);
@@ -230,6 +243,19 @@ assert.equal(navigationFailure.elements['editor-host'].children.length, 1);
 assert.equal(navigationFailure.elements['editor-host'].className, 'unlocked');
 assert.equal(navigationFailure.elements['return-to-oa'].disabled, false);
 assert.equal(navigationFailure.elements['editor-status'].textContent, '返回 OA 失败');
+
+const freshHandoffID = 'b'.repeat(64);
+const committedIdentity = { ...sourceIdentity, sha256: 'c'.repeat(64), byteCount: 8192 };
+const reopened = await loadEditor({
+  search: `?handoff=${freshHandoffID}`,
+  consumeResponse: { ok: true, handoff: { ...handoff, sourceIdentity: committedIdentity } }
+});
+assert.deepEqual(JSON.parse(JSON.stringify(reopened.messages)), [
+  { type: 'consume-editor-handoff', handoffID: freshHandoffID }
+]);
+assert.match(reopened.documentOpens[0].url, new RegExp(`_wpsHandoff=${freshHandoffID}$`));
+assert.equal(reopened.elements['editor-host'].className, 'unlocked');
+assert.equal(reopened.elements['editor-status'].textContent, '正文可编辑');
 
 verified.elements['return-to-oa'].clickListener();
 assert.equal(verified.replacementURL(), handoff.returnURL);
