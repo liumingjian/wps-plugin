@@ -4,12 +4,11 @@
   const RECEIPT_MAX_AGE_MS = 30_000;
   const CLOCK_SKEW_MS = 1_000;
   const HANDOFF_PATTERN = /^[a-f0-9]{64}$/;
-  const CACHE_IDENTITY_PATTERN = /^[a-f0-9]{32}$/;
   const RECEIPT_KEYS = Object.freeze([
     'actualFormat', 'byteCount', 'deliveredAt', 'handoff', 'sha256', 'sourcePath'
   ]);
 
-  function endpoints(template, sourcePath, cacheIdentity, handoffID) {
+  function endpoints(template, sourcePath, handoffID) {
     if (typeof template !== 'string' || template.split('{sourcePath}').length !== 2) {
       throw new Error('Gateway template must contain the source path exactly once.');
     }
@@ -17,7 +16,7 @@
         sourcePath.includes('/../') || sourcePath.includes('/./') || /[?#]/.test(sourcePath)) {
       throw new Error('Gateway source path is invalid.');
     }
-    if (!CACHE_IDENTITY_PATTERN.test(cacheIdentity || '') || !HANDOFF_PATTERN.test(handoffID || '')) {
+    if (!HANDOFF_PATTERN.test(handoffID || '')) {
       throw new Error('Gateway handoff identity is invalid.');
     }
 
@@ -25,7 +24,7 @@
     if (documentURL.searchParams.has('_wpsHandoff')) {
       throw new Error('Gateway template must not provide its own cache key.');
     }
-    documentURL.searchParams.set('_wpsHandoff', cacheIdentity);
+    documentURL.searchParams.set('_wpsHandoff', handoffID);
 
     const receiptURL = new URL(documentURL.origin);
     const pathSegments = documentURL.pathname.split('/');

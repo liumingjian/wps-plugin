@@ -18,11 +18,10 @@ const now = Date.parse('2026-08-02T12:00:00.000Z');
 const endpoints = RoadFlowIdentityGate.endpoints(
   'https://gateway.example.test/wps/v1/document?fileurl={sourcePath}&mode=word',
   sourceIdentity.sourcePath,
-  'c'.repeat(32),
   handoffID
 );
 assert.deepEqual(endpoints, {
-  documentURL: 'https://gateway.example.test/wps/v1/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&mode=word&_wpsHandoff=cccccccccccccccccccccccccccccccc',
+  documentURL: `https://gateway.example.test/wps/v1/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&mode=word&_wpsHandoff=${handoffID}`,
   receiptURL: `https://gateway.example.test/wps/v1/delivery-receipt?handoff=${handoffID}`
 });
 
@@ -74,7 +73,6 @@ assert.throws(
   () => RoadFlowIdentityGate.endpoints(
     'https://gateway.example.test/wps/document?fileurl={sourcePath}&_wpsHandoff=attacker',
     sourceIdentity.sourcePath,
-    'c'.repeat(32),
     handoffID
   ),
   /cache key/i
@@ -83,7 +81,6 @@ assert.throws(
   () => RoadFlowIdentityGate.endpoints(
     'https://gateway.example.test/wps/document?fileurl={sourcePath}',
     '/../Other.docx',
-    'c'.repeat(32),
     handoffID
   ),
   /source path/i

@@ -38,10 +38,10 @@ on other Origins.
 The customer-operated WPS Document Gateway must be read-only, byte-preserving,
 and reachable only on the trusted office network. It must not convert, retain,
 or modify the Document. After fully writing and flushing a successful Document
-response, the Gateway records a metadata-only Delivery Receipt for at most 30
+response, the Gateway records a metadata-only Gateway Delivery Receipt for at most 30
 seconds. The editor reads that receipt from the `delivery-receipt` sibling of
 the configured Gateway path, using the fresh `_wpsHandoff` value and the exact
-decoded source path. Receipt lookup must allow the fixed CRX Origin and must
+decoded source path. Gateway Delivery Receipt lookup must allow the fixed CRX Origin and must
 return a conflict response rather than choosing between duplicate records.
 
 ## DOCX source validation policy

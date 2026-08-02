@@ -22,7 +22,7 @@ function showUnavailableEditor() {
   status.textContent = 'This editor cannot be opened. Return to the OA page and activate the Document Link again.';
 }
 
-function validatedHandoff(value) {
+function validatedHandoff(value, handoffID) {
   const identity = RoadFlowSourceIdentityContract.validate(
     value?.sourceIdentity,
     value?.sourcePath,
@@ -32,7 +32,7 @@ function validatedHandoff(value) {
       typeof value.sourceURL !== 'string' || typeof value.sourcePath !== 'string' ||
       typeof value.title !== 'string' || typeof value.filename !== 'string' ||
       typeof value.gatewayTemplate !== 'string' || !['doc', 'docx'].includes(value.expectedFormat) ||
-      !/^[a-f0-9]{32}$/.test(value.cacheIdentity || '') ||
+      value.cacheIdentity !== handoffID ||
       (value.expectedFormat === 'docx' && !identity) ||
       !Number.isFinite(value.createdAt) || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now()) return undefined;
   try {
@@ -42,7 +42,7 @@ function validatedHandoff(value) {
         !['http:', 'https:'].includes(sourceURL.protocol) || sourceURL.username || sourceURL.password ||
         sourceURL.origin !== value.trustedOrigin || sourceURL.pathname !== value.sourcePath || !value.sourcePath.startsWith('/') ||
         !new RegExp(`\\.${value.expectedFormat}$`, 'i').test(value.sourcePath)) return undefined;
-    RoadFlowIdentityGate.endpoints(value.gatewayTemplate, value.sourcePath, value.cacheIdentity, 'a'.repeat(64));
+    RoadFlowIdentityGate.endpoints(value.gatewayTemplate, value.sourcePath, value.cacheIdentity);
   } catch {
     return undefined;
   }
@@ -136,7 +136,7 @@ async function verifyHandoff(handoffID, handoff) {
   if (handoff.expectedFormat !== 'docx') throw new Error('Legacy DOC verification is not available.');
   const attemptStartedAt = Date.now();
   const endpoints = RoadFlowIdentityGate.endpoints(
-    handoff.gatewayTemplate, handoff.sourcePath, handoff.cacheIdentity, handoffID
+    handoff.gatewayTemplate, handoff.sourcePath, handoffID
   );
   mountWPS();
   application = await waitForApplication();
@@ -153,7 +153,7 @@ async function verifyHandoff(handoffID, handoff) {
 
 async function consumeHandoff(handoffID) {
   const response = await chrome.runtime.sendMessage({ type: 'consume-editor-handoff', handoffID });
-  return response?.ok ? validatedHandoff(response.handoff) : undefined;
+  return response?.ok ? validatedHandoff(response.handoff, handoffID) : undefined;
 }
 
 async function reverify() {

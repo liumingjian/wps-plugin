@@ -88,7 +88,7 @@ async function storeHandoff(context, pendingVerification = false, retryTabID) {
     do { handoffID = randomHex(32); } while (handoffs[handoffID]);
     handoffs[handoffID] = {
       ...context,
-      cacheIdentity: randomHex(16),
+      cacheIdentity: handoffID,
       createdAt,
       expiresAt: createdAt + HANDOFF_TTL_MS,
       ...(pendingVerification ? { pendingVerification: true, retryTabID } : {})

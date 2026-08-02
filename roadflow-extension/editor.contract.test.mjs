@@ -29,7 +29,7 @@ const handoff = {
   expectedFormat: 'docx',
   gatewayTemplate: 'https://gateway.example.test/wps/v1/document?fileurl={sourcePath}',
   sourceIdentity,
-  cacheIdentity: 'b'.repeat(32),
+  cacheIdentity: firstHandoffID,
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
 };
@@ -155,7 +155,7 @@ assert.equal(verified.elements['return-to-oa'].disabled, false);
 assert.equal(verified.elements['retry-verification'].hidden, true);
 assert.equal(verified.elements['editor-status'].textContent, '正文可编辑');
 assert.deepEqual(verified.documentOpens, [{
-  url: 'https://gateway.example.test/wps/v1/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&_wpsHandoff=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  url: `https://gateway.example.test/wps/v1/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&_wpsHandoff=${firstHandoffID}`,
   readOnly: false
 }]);
 assert.deepEqual(JSON.parse(JSON.stringify(verified.fetches)), [{
@@ -194,7 +194,11 @@ for (const [search, response] of [
   ['', undefined],
   ['?handoff=../report.docx', undefined],
   [`?handoff=${firstHandoffID}`, { ok: false }],
-  [`?handoff=${firstHandoffID}`, { ok: true, handoff: {} }]
+  [`?handoff=${firstHandoffID}`, { ok: true, handoff: {} }],
+  [`?handoff=${firstHandoffID}`, {
+    ok: true,
+    handoff: { ...handoff, cacheIdentity: 'f'.repeat(64) }
+  }]
 ]) {
   const unavailable = await loadEditor({ search, consumeResponse: response });
   assert.equal(unavailable.elements['editor-host'].children.length, 0);

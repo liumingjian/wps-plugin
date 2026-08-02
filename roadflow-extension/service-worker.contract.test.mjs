@@ -119,7 +119,7 @@ assert.deepEqual(successful[0].handoff, {
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
 });
-assert.match(successful[0].handoff.cacheIdentity, /^[a-f0-9]{32}$/);
+assert.equal(successful[0].handoff.cacheIdentity, editorURL.searchParams.get('handoff'));
 assert.deepEqual(await consume(), { ok: false });
 
 const retryCreated = await new Promise(resolve => {
@@ -166,6 +166,7 @@ const retryConsumed = await new Promise(resolve => {
 assert.equal(retryConsumed.ok, true);
 assert.deepEqual(retryConsumed.handoff.sourceIdentity, activation.sourceIdentity);
 assert.notEqual(retryConsumed.handoff.cacheIdentity, successful[0].handoff.cacheIdentity);
+assert.equal(retryConsumed.handoff.cacheIdentity, retryClaimed.handoffID);
 assert.deepEqual(await new Promise(resolve => {
   messageListener(
     {
