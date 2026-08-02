@@ -132,14 +132,14 @@ produce zero new OfficeSave requests.
 
 | Case | Injection | Required observation |
 | --- | --- | --- |
-| Authentication loss | Expire the OA session before source read | Gate fails; no WPS object or overwrite; return remains available |
+| Authentication loss | Expire the OA session before source read | OA page remains visible; no handoff, editor, WPS object, or overwrite is created |
 | Wrong Document | Gateway maps the test path to the other-format fixture | Receipt/identity mismatch closes the gate; original unchanged |
 | Stale cache | Prime WPS with the previous version, then start a fresh handoff | New cache key is requested; stale bytes cannot pass the gate |
 | Missing receipt | Suppress receipt creation after delivery | Gate times out; WPS object removed; zero overwrite |
 | Mismatched receipt | Alter exactly one of path, format, bytes, or SHA-256 | Gate fails for every altered field; zero overwrite |
 | WPS failure | Make `openDocument` fail or remove NPAPI before entry | Visible failure; WPS object removed; zero overwrite |
 | Timeout | Delay delivery/lookup beyond 10 seconds | Bounded visible failure; no later receipt unlocks the stale editor |
-| Save failure | Reject OfficeSave after a verified edit | Live WPS Document remains; status is **保存失败**; original unchanged |
+| Recoverable Overwrite Failure | Reject OfficeSave after a verified edit | Live WPS Document remains; status is **保存失败**; original unchanged |
 | Retry | Restore authorization, then choose **重试保存** once | No automatic retry; exactly one new request commits atomically |
 | Discard cancel | After save failure, choose Return then cancel | Editor and live WPS Document remain; no navigation or overwrite |
 | Discard confirm | After save failure, choose Return then confirm | Exact OA return URL replaces editor; failed bytes remain uncommitted |

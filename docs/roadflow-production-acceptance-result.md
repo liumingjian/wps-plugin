@@ -52,7 +52,7 @@ not accepted.
 | --- | --- | --- |
 | Same-tab Edit Entry and authenticated source read | | |
 | NPAPI at fixed extension Origin | | |
-| Gateway DAV, receipt, WPS edit, atomic Save | | |
+| Gateway DAV, receipt, WPS edit, atomic overwrite | | |
 | Return and fresh-handoff reopen | | |
 | Authentication loss | | |
 | Wrong Document | | |
@@ -61,7 +61,7 @@ not accepted.
 | Mismatched receipt | | |
 | WPS failure | | |
 | Verification timeout | | |
-| Save failure | | |
+| Recoverable Overwrite Failure | | |
 | Explicit retry | | |
 | Discard cancel and confirm | | |
 | Return failure | | |

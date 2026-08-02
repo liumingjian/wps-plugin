@@ -187,14 +187,14 @@ func TestRoadFlowProductionAcceptanceCoversTheRealCustomerBoundary(t *testing.T)
 	})
 	assertContains(t, filepath.Join(repo, "roadflow-extension", "editor.browser.test.mjs"), []string{
 		"failed Document Identity Gate", "overwriteCalls", "Recoverable Overwrite Failure",
-		"horizontalOverflow", "narrow",
+		"public OA workflow", "fresh handoff", "horizontalOverflow", "narrow",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-production-acceptance.md"), []string{
 		"real Gateway", "DOCX", "DOC", "same tab", "authenticated OA",
 		"fixed CRX Origin", "Access-Control-Allow-Origin", "retention", "cleanup",
 		"10-second verification timeout", "Authentication loss", "Wrong Document",
 		"Stale cache", "Missing receipt", "Mismatched receipt", "WPS failure",
-		"Save failure", "Retry", "Discard", "Return failure", "zero new OfficeSave requests",
+		"Recoverable Overwrite Failure", "Retry", "Discard", "Return failure", "zero new OfficeSave requests",
 		"no Native Messaging", "no local agent", "no product middleware", "no system repair",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-production-acceptance-result.md"), []string{
