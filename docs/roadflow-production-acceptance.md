@@ -141,12 +141,12 @@ produce zero new OfficeSave requests.
 | Timeout | Delay delivery/lookup beyond 10 seconds | Bounded visible failure; no later receipt unlocks the stale editor |
 | Recoverable Overwrite Failure | Reject OfficeSave after a verified edit | Live WPS Document remains; status is **保存失败**; original unchanged |
 | Retry | Restore authorization, then choose **重试保存** once | No automatic retry; exactly one new request commits atomically |
-| Discard cancel | After save failure, choose Return then cancel | Editor and live WPS Document remain; no navigation or overwrite |
-| Discard confirm | After save failure, choose Return then confirm | Exact OA return URL replaces editor; failed bytes remain uncommitted |
+| Discard cancel | After the Recoverable Overwrite Failure, choose Return then cancel | Editor and live WPS Document remain; no navigation or overwrite |
+| Discard confirm | After the Recoverable Overwrite Failure, choose Return then confirm | Exact OA return URL replaces editor; failed bytes remain uncommitted |
 | Return failure | Block replacement navigation | Editor and WPS remain usable; status is **返回 OA 失败** |
 
 Also exercise malformed, expired, duplicate-conflicting, and cross-handoff
-receipt lookups at the Gateway boundary. For all atomic-save failures, compare
+receipt lookups at the Gateway boundary. For all atomic overwrite failures, compare
 the complete original hash before and after, not only the response status.
 
 ## Release boundary

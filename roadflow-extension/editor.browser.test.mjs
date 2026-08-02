@@ -5,7 +5,36 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const editorURL = pathToFileURL(fileURLToPath(new URL('./editor.html', import.meta.url))).href;
 const handoffID = 'a'.repeat(64);
 
+function installWPSBoundary(scenario) {
+  const overwriteResults = [...(scenario.overwriteResults || [true])];
+  const observations = { configurationReady: false, openCalls: [], overwriteCalls: [] };
+  globalThis.__roadFlowObservations = observations;
+  const application = {
+    ActiveDocument: scenario.activeDocument === false ? undefined : {
+      saveURL_FormData(url, metadata) {
+        observations.overwriteCalls.push({ url, metadata });
+        const result = overwriteResults.shift();
+        if (result === 'throw') throw new Error('OA rejected overwrite');
+        return result ?? true;
+      }
+    },
+    openDocument(url, readOnly) {
+      observations.openCalls.push({ url, readOnly });
+      return scenario.openResult ?? true;
+    }
+  };
+  const createElement = Document.prototype.createElement;
+  Document.prototype.createElement = function (name, options) {
+    const element = createElement.call(this, name, options);
+    if (String(name).toLowerCase() === 'object') {
+      Object.defineProperty(element, 'Application', { configurable: true, value: application });
+    }
+    return element;
+  };
+}
+
 async function openEditor(page, scenario = {}) {
+  await page.addInitScript(installWPSBoundary, scenario);
   await page.addInitScript(({ handoffID, scenario }) => {
     const sourcePath = scenario.sourcePath || '/UploadFiles/2026/Quarterly%20Report.DOCX';
     const expectedFormat = sourcePath.toLowerCase().endsWith('.doc') ? 'doc' : 'docx';
@@ -15,33 +44,6 @@ async function openEditor(page, scenario = {}) {
       byteCount: 4096,
       sha256: 'b'.repeat(64)
     };
-    const overwriteResults = [...(scenario.overwriteResults || [true])];
-    const observations = { openCalls: [], overwriteCalls: [] };
-    globalThis.__roadFlowObservations = observations;
-
-    const application = {
-      ActiveDocument: scenario.activeDocument === false ? undefined : {
-        saveURL_FormData(url, metadata) {
-          observations.overwriteCalls.push({ url, metadata });
-          const result = overwriteResults.shift();
-          if (result === 'throw') throw new Error('OA rejected overwrite');
-          return result ?? true;
-        }
-      },
-      openDocument(url, readOnly) {
-        observations.openCalls.push({ url, readOnly });
-        return scenario.openResult ?? true;
-      }
-    };
-    const createElement = Document.prototype.createElement;
-    Document.prototype.createElement = function (name, options) {
-      const element = createElement.call(this, name, options);
-      if (String(name).toLowerCase() === 'object') {
-        Object.defineProperty(element, 'Application', { configurable: true, value: application });
-      }
-      return element;
-    };
-
     Object.defineProperty(globalThis, 'chrome', {
       configurable: true,
       value: {
@@ -122,31 +124,11 @@ async function openPublicWorkflow(page) {
     return value;
   });
 
+  await page.addInitScript(installWPSBoundary, {});
   await page.addInitScript(({ returnURL, sourceIdentity }) => {
-    const observations = { configurationReady: false, openCalls: [], overwriteCalls: [] };
-    globalThis.__roadFlowObservations = observations;
+    const observations = globalThis.__roadFlowObservations;
     globalThis.RoadFlowSourceIdentity = {
       async derive() { return { ok: true, identity: sourceIdentity }; }
-    };
-    const application = {
-      ActiveDocument: {
-        saveURL_FormData(url, metadata) {
-          observations.overwriteCalls.push({ url, metadata });
-          return true;
-        }
-      },
-      openDocument(url, readOnly) {
-        observations.openCalls.push({ url, readOnly });
-        return true;
-      }
-    };
-    const createElement = Document.prototype.createElement;
-    Document.prototype.createElement = function (name, options) {
-      const element = createElement.call(this, name, options);
-      if (String(name).toLowerCase() === 'object') {
-        Object.defineProperty(element, 'Application', { configurable: true, value: application });
-      }
-      return element;
     };
     Object.defineProperty(globalThis, 'chrome', {
       configurable: true,
