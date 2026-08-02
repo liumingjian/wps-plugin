@@ -128,6 +128,9 @@ func (gateway *handler) deliverDocument(response http.ResponseWriter, request *h
 	if err != nil || written != len(payload) {
 		return
 	}
+	if err := http.NewResponseController(response).Flush(); err != nil {
+		return
+	}
 	receipt := deliveryReceipt{
 		ActualFormat: format,
 		ByteCount:    len(payload),

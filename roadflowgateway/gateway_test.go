@@ -83,6 +83,7 @@ func TestInvalidIncompleteOversizedAndStaleDOCDeliveriesHaveNoReceipt(t *testing
 			}
 		}, status: 422},
 		{name: "incomplete response", prepare: func(t *testing.T, target string) { write(t, target, fixture(t, "original.doc")) }, writer: &shortWriter{}, status: 0},
+		{name: "flush failure", prepare: func(t *testing.T, target string) { write(t, target, fixture(t, "original.doc")) }, writer: &flushFailWriter{}, status: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			target := filepath.Join(t.TempDir(), "legacy-report.doc")
@@ -245,3 +246,15 @@ func (*shortWriter) Write(payload []byte) (int, error) {
 }
 
 var _ io.Writer = (*shortWriter)(nil)
+
+type flushFailWriter struct{ header http.Header }
+
+func (writer *flushFailWriter) Header() http.Header {
+	if writer.header == nil {
+		writer.header = http.Header{}
+	}
+	return writer.header
+}
+func (*flushFailWriter) WriteHeader(int)                   {}
+func (*flushFailWriter) Write(payload []byte) (int, error) { return len(payload), nil }
+func (*flushFailWriter) FlushError() error                 { return errors.New("connection closed while flushing") }
