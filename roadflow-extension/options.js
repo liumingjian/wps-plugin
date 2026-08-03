@@ -2,7 +2,6 @@
 
 const form = document.querySelector('#setup-form');
 const originInput = document.querySelector('#trusted-origin');
-const templateInput = document.querySelector('#gateway-template');
 const message = document.querySelector('#form-message');
 let savedConfiguration;
 
@@ -12,15 +11,13 @@ async function loadSavedConfiguration() {
   if (!result.ok) return;
   savedConfiguration = result.value;
   originInput.value = result.value.trustedOrigin;
-  templateInput.value = result.value.gatewayTemplate;
 }
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
   message.textContent = '';
   const result = RoadFlowConfiguration.validate({
-    trustedOrigin: originInput.value,
-    gatewayTemplate: templateInput.value
+    trustedOrigin: originInput.value
   });
   if (!result.ok) {
     message.textContent = result.message;

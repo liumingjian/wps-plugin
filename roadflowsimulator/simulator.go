@@ -1,5 +1,5 @@
-// Package roadflowsimulator composes the production OA and Gateway contracts
-// into a local customer-environment simulator for the signed RoadFlow CRX.
+// Package roadflowsimulator composes the customer OA download and OfficeSave
+// contracts into a local environment for the signed RoadFlow CRX.
 package roadflowsimulator
 
 import (
@@ -12,32 +12,27 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/liumingjian/wps-plugin/roadflowgateway"
 	"github.com/liumingjian/wps-plugin/roadflowoa"
 )
 
 const (
-	SourcePath           = "/UploadFiles/2026/Acceptance.doc"
-	defaultOAOrigin      = "http://127.0.0.1:4317"
-	defaultGatewayOrigin = "http://127.0.0.1:4318"
-	sessionCookie        = "roadflow_simulator_session"
-	sessionValue         = "authenticated"
+	SourcePath      = "/UploadFiles/2026/Acceptance.doc"
+	defaultOAOrigin = "http://127.0.0.1:4317"
+	sessionCookie   = "roadflow_simulator_session"
+	sessionValue    = "authenticated"
 )
 
-// Config describes the two Origins exposed to the browser and WPS.
+// Config describes the customer OA Origin exposed to the browser and WPS.
 type Config struct {
 	StateDir        string
 	OAOrigin        string
-	GatewayOrigin   string
 	InitialDocument []byte
 }
 
-// Simulator exposes handlers for an authenticated OA and a read-only Gateway.
+// Simulator exposes a direct Document download and authenticated OfficeSave.
 type Simulator struct {
-	OAHandler       http.Handler
-	GatewayHandler  http.Handler
-	GatewayTemplate string
-	DocumentPath    string
+	OAHandler    http.Handler
+	DocumentPath string
 }
 
 // New creates or reopens one persistent local simulation state.
@@ -48,14 +43,8 @@ func New(config Config) (*Simulator, error) {
 	if config.OAOrigin == "" {
 		config.OAOrigin = defaultOAOrigin
 	}
-	if config.GatewayOrigin == "" {
-		config.GatewayOrigin = defaultGatewayOrigin
-	}
 	if err := validateOrigin(config.OAOrigin); err != nil {
 		return nil, fmt.Errorf("invalid OA Origin: %w", err)
-	}
-	if err := validateOrigin(config.GatewayOrigin); err != nil {
-		return nil, fmt.Errorf("invalid Gateway Origin: %w", err)
 	}
 
 	documentDir := filepath.Join(config.StateDir, "documents")
@@ -87,27 +76,9 @@ func New(config Config) (*Simulator, error) {
 	if err != nil {
 		return nil, err
 	}
-	gateway, err := roadflowgateway.NewHandler(roadflowgateway.Config{
-		Documents:       documents,
-		TrustedOAOrigin: config.OAOrigin,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	gatewayTemplate := config.GatewayOrigin + "/wps/document?fileurl={sourcePath}"
-	oa := newOAHandler(config, gatewayTemplate, documentPath, officeSave)
-	gatewayMux := http.NewServeMux()
-	gatewayMux.HandleFunc("GET /healthz", func(response http.ResponseWriter, _ *http.Request) {
-		response.Header().Set("Cache-Control", "no-store")
-		response.WriteHeader(http.StatusNoContent)
-	})
-	gatewayMux.Handle("/", gateway)
+	oa := newOAHandler(config, documentPath, officeSave)
 	return &Simulator{
-		OAHandler:       oa,
-		GatewayHandler:  gatewayMux,
-		GatewayTemplate: gatewayTemplate,
-		DocumentPath:    documentPath,
+		OAHandler: oa, DocumentPath: documentPath,
 	}, nil
 }
 
@@ -120,16 +91,14 @@ func validateOrigin(value string) error {
 	return nil
 }
 
-func newOAHandler(config Config, gatewayTemplate, documentPath string, officeSave http.Handler) http.Handler {
+func newOAHandler(config Config, documentPath string, officeSave http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		if err := simulatorPage.Execute(response, map[string]any{
-			"Authenticated":   authenticated(request),
-			"SourcePath":      SourcePath,
-			"OAOrigin":        config.OAOrigin,
-			"GatewayTemplate": gatewayTemplate,
-			"ExtensionOrigin": roadflowgateway.ExtensionOrigin,
+			"Authenticated": authenticated(request),
+			"SourcePath":    SourcePath,
+			"OAOrigin":      config.OAOrigin,
 		}); err != nil {
 			http.Error(response, "simulator page failed", http.StatusInternalServerError)
 		}
@@ -149,10 +118,6 @@ func newOAHandler(config Config, gatewayTemplate, documentPath string, officeSav
 		http.Redirect(response, request, "/", http.StatusSeeOther)
 	})
 	mux.HandleFunc("GET "+SourcePath, func(response http.ResponseWriter, request *http.Request) {
-		if !authenticated(request) {
-			http.Error(response, "OA session is required", http.StatusUnauthorized)
-			return
-		}
 		payload, err := os.ReadFile(documentPath)
 		if err != nil || roadflowoa.ValidateFormatCompatibleDocument(payload, "doc") != nil {
 			http.Error(response, "Document unavailable", http.StatusInternalServerError)
@@ -229,8 +194,6 @@ var simulatorPage = template.Must(template.New("simulator").Parse(`<!doctype htm
   <h2>CRX 配置</h2>
   <dl>
     <dt>Trusted OA Origin</dt><dd>{{.OAOrigin}}</dd>
-    <dt>Gateway template</dt><dd>{{.GatewayTemplate}}</dd>
-    <dt>固定 CRX Origin</dt><dd>{{.ExtensionOrigin}}</dd>
   </dl>
 </body>
 </html>`))

@@ -1,6 +1,5 @@
 'use strict';
 
-const SOURCE_PATH_PLACEHOLDER = '{sourcePath}';
 const STORAGE_KEY = 'roadFlowIntegration';
 
 function failure(message) {
@@ -23,13 +22,7 @@ function originPattern(origin) {
 }
 
 function permissionPatterns(configuration) {
-  const gatewayURL = parseHTTPURL(
-    configuration.gatewayTemplate.replace(SOURCE_PATH_PLACEHOLDER, encodeURIComponent('/document.docx'))
-  );
-  return [...new Set([
-    originPattern(configuration.trustedOrigin),
-    originPattern(gatewayURL.origin)
-  ])];
+  return [originPattern(configuration.trustedOrigin)];
 }
 
 function validate(input) {
@@ -38,24 +31,14 @@ function validate(input) {
     return failure('Trusted OA Origin must be one HTTP or HTTPS Origin without a path, credentials, query, or fragment.');
   }
 
-  const template = input?.gatewayTemplate;
-  if (typeof template !== 'string' || template.split(SOURCE_PATH_PLACEHOLDER).length !== 2) {
-    return failure('Gateway template must contain exactly one {sourcePath} placeholder.');
-  }
-  const gatewayURL = parseHTTPURL(template.replace(SOURCE_PATH_PLACEHOLDER, encodeURIComponent('/document.docx')));
-  if (!gatewayURL || gatewayURL.hash) {
-    return failure('Gateway template must be one HTTP or HTTPS URL without credentials or a fragment.');
-  }
-
   return Object.freeze({
     ok: true,
     value: Object.freeze({
-      trustedOrigin: originURL.origin,
-      gatewayTemplate: template
+      trustedOrigin: originURL.origin
     })
   });
 }
 
 globalThis.RoadFlowConfiguration = Object.freeze({
-  SOURCE_PATH_PLACEHOLDER, STORAGE_KEY, originPattern, permissionPatterns, validate
+  STORAGE_KEY, originPattern, permissionPatterns, validate
 });

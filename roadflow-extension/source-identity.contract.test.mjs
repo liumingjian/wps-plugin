@@ -110,12 +110,19 @@ globalThis.fetch = async (url, options) => {
 vm.runInThisContext(await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8'), { filename: 'source-identity-contract.js' });
 vm.runInThisContext(await readFile(new URL('./source-identity.js', import.meta.url), 'utf8'), { filename: 'source-identity.js' });
 
+assert.equal(
+  RoadFlowSourceIdentityContract.sourcePath(
+    'http://ywsh.yn.srrc.org.cn/Attachment/UploadFiles/202608/03//%E6%B5%8B%E8%AF%95%E6%96%87%E6%A1%A320260803_NHZP84.docx'
+  ),
+  '/Attachment/UploadFiles/202608/03//测试文档20260803_NHZP84.docx'
+);
+
 const sourceURL = 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1';
 const result = await RoadFlowSourceIdentity.derive(sourceURL, 'docx');
 assert.deepEqual(result, {
   ok: true,
   identity: {
-    sourcePath: '/documents/Quarterly%20Report.DOCX',
+    sourcePath: '/documents/Quarterly Report.DOCX',
     actualFormat: 'docx',
     byteCount: sourceBytes.byteLength,
     sha256: createHash('sha256').update(sourceBytes).digest('hex')

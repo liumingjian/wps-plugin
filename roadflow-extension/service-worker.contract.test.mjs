@@ -4,15 +4,7 @@ import vm from 'node:vm';
 
 let messageListener;
 let localStored = {};
-let sessionStored = {};
-let now = 1_800_000_000_000;
 const extensionOrigin = 'chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd';
-const registrationRequests = [];
-const RealDate = Date;
-globalThis.Date = class extends RealDate {
-  static now() { return now; }
-};
-
 globalThis.chrome = {
   runtime: {
     getURL(path) { return `${extensionOrigin}/${path}`; },
@@ -22,39 +14,21 @@ globalThis.chrome = {
     local: {
       async get() { return localStored; },
       async set(update) { localStored = { ...localStored, ...update }; }
-    },
-    session: {
-      async get() { return sessionStored; },
-      async set(update) { sessionStored = { ...sessionStored, ...update }; }
     }
   },
   permissions: {
     async contains({ origins }) {
-      return JSON.stringify(origins) === JSON.stringify([
-        'https://oa.example.test/*', 'https://gateway.example.test/*'
-      ]);
+      return JSON.stringify(origins) === JSON.stringify(['http://ywsh.yn.srrc.org.cn/*']);
     }
   }
 };
 globalThis.importScripts = async () => {};
-globalThis.fetch = async (url, options) => {
-  const payload = JSON.parse(options.body);
-  registrationRequests.push({ url, options, payload });
-  return {
-    ok: true,
-    async json() {
-      return { handoff: payload.handoff };
-    }
-  };
-};
+globalThis.fetch = () => { throw new Error('Direct OA mode must not contact a Gateway.'); };
 vm.runInThisContext(await readFile(new URL('./configuration.js', import.meta.url), 'utf8'), { filename: 'configuration.js' });
 vm.runInThisContext(await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8'), { filename: 'source-identity-contract.js' });
 vm.runInThisContext(await readFile(new URL('./service-worker.js', import.meta.url), 'utf8'), { filename: 'service-worker.js' });
 
-const configuration = {
-  trustedOrigin: 'https://oa.example.test',
-  gatewayTemplate: 'https://gateway.example.test/wps/document?fileurl={sourcePath}'
-};
+const configuration = { trustedOrigin: 'http://ywsh.yn.srrc.org.cn' };
 const response = await new Promise(resolve => {
   assert.equal(messageListener(
     { type: 'apply-configuration', configuration },
@@ -65,222 +39,66 @@ const response = await new Promise(resolve => {
 assert.deepEqual(response, { ok: true, configuration });
 assert.deepEqual(localStored, { roadFlowIntegration: configuration });
 
-const rejected = await new Promise(resolve => {
-  messageListener(
-    { type: 'apply-configuration', configuration },
-    { url: 'https://oa.example.test/settings' },
-    resolve
-  );
-});
-assert.deepEqual(rejected, { ok: false, message: 'Configuration request was not authorized.' });
-
-const returnURL = 'https://oa.example.test/workflow/current?step=review#document';
-const activation = {
-  returnURL,
-  sourceURL: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
-  title: 'Quarterly Report',
-  sourceIdentity: {
-    sourcePath: '/documents/Quarterly%20Report.DOCX',
-    actualFormat: 'docx',
-    byteCount: 4096,
-    sha256: 'a'.repeat(64)
-  }
+const returnURL = 'http://ywsh.yn.srrc.org.cn/workflow/current?step=review';
+const sourceURL = 'http://ywsh.yn.srrc.org.cn/Attachment/UploadFiles/202608/03//%E6%B5%8B%E8%AF%95%E6%96%87%E6%A1%A320260803_NHZP84.docx';
+const sourcePath = '/Attachment/UploadFiles/202608/03//测试文档20260803_NHZP84.docx';
+const sourceIdentity = {
+  sourcePath,
+  actualFormat: 'docx',
+  byteCount: 4096,
+  sha256: 'a'.repeat(64)
 };
+const activation = { returnURL, sourceURL, title: '测试文档20260803_NHZP84.docx', sourceIdentity };
+
 const configurationResponse = await new Promise(resolve => {
   messageListener({ type: 'configuration' }, { url: returnURL, tab: { id: 7 } }, resolve);
 });
 assert.deepEqual(configurationResponse, { ok: true, configuration });
 
-async function createHandoff() {
-  return new Promise(resolve => {
-    messageListener({ type: 'create-editor-handoff', activation }, { url: returnURL, tab: { id: 7 } }, resolve);
-  });
-}
-
-const created = await createHandoff();
+const created = await new Promise(resolve => {
+  messageListener({ type: 'create-editor-handoff', activation }, { url: returnURL, tab: { id: 7 } }, resolve);
+});
 assert.equal(created.ok, true);
-const editorLaunch = created.editorLaunch;
-assert.match(editorLaunch.handoff, /^[a-f0-9]{64}$/);
-assert.equal(new URL(editorLaunch.documentURL).origin, 'https://gateway.example.test');
-assert.equal(new URL(editorLaunch.receiptURL).pathname, '/wps/editor-receipt');
-assert.equal(new URL(editorLaunch.officeSaveURL).origin, 'https://oa.example.test');
-assert.equal(editorLaunch.returnURL, returnURL);
-assert.equal(registrationRequests[0].url, 'https://gateway.example.test/wps/editor-handoff');
-assert.equal(registrationRequests[0].options.method, 'POST');
-assert.deepEqual(registrationRequests[0].payload, {
-  expectedFormat: 'docx',
-  handoff: editorLaunch.handoff,
-  returnURL,
-  sourceIdentity: activation.sourceIdentity,
-  sourcePath: '/documents/Quarterly%20Report.DOCX',
-  title: 'Quarterly Report'
-});
+assert.match(created.editorLaunch.handoff, /^[a-f0-9]{64}$/);
+const launchedDocumentURL = new URL(created.editorLaunch.documentURL);
+assert.equal(`${launchedDocumentURL.origin}${launchedDocumentURL.pathname}`, sourceURL);
+assert.match(launchedDocumentURL.hash, /^#roadflow-handoff=[a-f0-9]{64}$/);
+assert.equal(created.editorLaunch.sourcePath, sourcePath);
+assert.equal(created.editorLaunch.sourceIdentity.sourcePath, sourcePath);
+assert.equal(created.editorLaunch.returnURL, returnURL);
+assert.equal(
+  new URL(created.editorLaunch.officeSaveURL).pathname,
+  '/RoadFlow/uploadfiles/OfficeSave'
+);
+assert.equal(new URL(created.editorLaunch.officeSaveURL).searchParams.get('fileurl'), sourcePath);
+assert.equal('receiptURL' in created.editorLaunch, false);
+assert.equal('gatewayTemplate' in created.editorLaunch, false);
 
-const consume = () => new Promise(resolve => {
-  messageListener(
-    { type: 'consume-editor-handoff', handoffID: editorLaunch.handoff },
-    { url: `${extensionOrigin}/editor.html?handoff=${editorLaunch.handoff}` },
-    resolve
-  );
-});
-const consumedResults = await Promise.all([consume(), consume()]);
-const successful = consumedResults.filter(result => result.ok);
-assert.equal(successful.length, 1);
-assert.deepEqual(successful[0].handoff, {
-  returnURL,
-  trustedOrigin: 'https://oa.example.test',
-  sourceURL: activation.sourceURL,
-  sourcePath: '/documents/Quarterly%20Report.DOCX',
-  title: 'Quarterly Report',
-  filename: 'Quarterly Report.DOCX',
-  expectedFormat: 'docx',
-  gatewayTemplate: configuration.gatewayTemplate,
-  sourceIdentity: activation.sourceIdentity,
-  tabID: 7,
-  createdAt: 1_800_000_000_000,
-  expiresAt: 1_800_000_120_000
-});
-assert.deepEqual(await consume(), { ok: false });
-
-const retryCreated = await new Promise(resolve => {
-  messageListener(
-    { type: 'create-reverification-handoff', previousHandoff: successful[0].handoff },
-    { url: `${extensionOrigin}/editor.html`, tab: { id: 7 } },
-    resolve
-  );
-});
-assert.equal(retryCreated.ok, true);
-assert.equal(retryCreated.returnURL, returnURL);
-
-const retryClaimed = await new Promise(resolve => {
-  messageListener({ type: 'claim-reverification' }, { url: returnURL, tab: { id: 7 } }, resolve);
-});
-assert.equal(retryClaimed.ok, true);
-assert.match(retryClaimed.handoffID, /^[a-f0-9]{64}$/);
-assert.notEqual(retryClaimed.handoffID, editorLaunch.handoff);
-assert.equal(retryClaimed.sourceURL, activation.sourceURL);
-assert.deepEqual(await new Promise(resolve => {
-  messageListener({ type: 'claim-reverification' }, { url: returnURL, tab: { id: 7 } }, resolve);
-}), { ok: false });
-
-const retryCompleted = await new Promise(resolve => {
-  messageListener(
-    {
-      type: 'complete-reverification-handoff',
-      handoffID: retryClaimed.handoffID,
-      sourceIdentity: activation.sourceIdentity
-    },
-    { url: returnURL, tab: { id: 7 } },
-    resolve
-  );
-});
-assert.equal(retryCompleted.ok, true);
-assert.equal(retryCompleted.editorLaunch.handoff, retryClaimed.handoffID);
-const retryConsumed = await new Promise(resolve => {
-  messageListener(
-    { type: 'consume-editor-handoff', handoffID: retryClaimed.handoffID },
-    { url: `${extensionOrigin}/editor.html?handoff=${retryClaimed.handoffID}` },
-    resolve
-  );
-});
-assert.equal(retryConsumed.ok, true);
-assert.deepEqual(retryConsumed.handoff.sourceIdentity, activation.sourceIdentity);
-assert.deepEqual(await new Promise(resolve => {
-  messageListener(
-    {
-      type: 'complete-reverification-handoff',
-      handoffID: retryClaimed.handoffID,
-      sourceIdentity: activation.sourceIdentity
-    },
-    { url: returnURL, tab: { id: 7 } },
-    resolve
-  );
-}), { ok: false });
-
-const invalidRetry = await new Promise(resolve => {
-  messageListener(
-    { type: 'create-reverification-handoff', previousHandoff: { ...successful[0].handoff, sourcePath: '/documents/Other.docx' } },
-    { url: `${extensionOrigin}/editor.html`, tab: { id: 7 } },
-    resolve
-  );
-});
-assert.deepEqual(invalidRetry, { ok: false });
-
-const docActivation = {
-  returnURL,
-  sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
-  title: 'Legacy Document',
-  sourceIdentity: {
-    sourcePath: '/documents/Legacy.DOC',
-    actualFormat: 'doc',
-    byteCount: 3072,
-    sha256: 'b'.repeat(64)
-  }
-};
-const createdDoc = await new Promise(resolve => {
-  messageListener({ type: 'create-editor-handoff', activation: docActivation }, { url: returnURL, tab: { id: 7 } }, resolve);
-});
-assert.equal(createdDoc.ok, true);
-const docHandoffID = createdDoc.editorLaunch.handoff;
-const consumedDoc = await new Promise(resolve => {
-  messageListener({ type: 'consume-editor-handoff', handoffID: docHandoffID }, { url: `${extensionOrigin}/editor.html?handoff=${docHandoffID}` }, resolve);
-});
-assert.equal(consumedDoc.ok, true);
-assert.equal(consumedDoc.handoff.expectedFormat, 'doc');
-assert.deepEqual(consumedDoc.handoff.sourceIdentity, docActivation.sourceIdentity);
-
-for (const sourceIdentity of [
-  undefined,
-  { ...activation.sourceIdentity, sourcePath: '/documents/Another.docx' },
-  { ...activation.sourceIdentity, actualFormat: 'doc' },
-  { ...activation.sourceIdentity, byteCount: 0 },
-  { ...activation.sourceIdentity, sha256: 'not-a-digest' }
+for (const invalid of [
+  { activation: { ...activation, sourceIdentity: undefined }, senderURL: returnURL },
+  { activation: { ...activation, sourceIdentity: { ...sourceIdentity, sourcePath: '/wrong.docx' } }, senderURL: returnURL },
+  { activation: { ...activation, sourceURL: 'http://files.example.test/report.docx' }, senderURL: returnURL },
+  { activation: { ...activation, sourceURL: 'http://ywsh.yn.srrc.org.cn/report.xlsx' }, senderURL: returnURL },
+  { activation, senderURL: 'http://ywsh.yn.srrc.org.cn/other-page' }
 ]) {
-  const rejectedIdentity = await new Promise(resolve => {
+  const rejected = await new Promise(resolve => {
     messageListener(
-      { type: 'create-editor-handoff', activation: { ...activation, sourceIdentity } },
-      { url: returnURL, tab: { id: 7 } },
+      { type: 'create-editor-handoff', activation: invalid.activation },
+      { url: invalid.senderURL, tab: { id: 7 } },
       resolve
     );
   });
-  assert.deepEqual(rejectedIdentity, { ok: false });
+  assert.deepEqual(rejected, { ok: false });
 }
 
-const malformed = await new Promise(resolve => {
+const unauthorizedConfiguration = await new Promise(resolve => {
   messageListener(
-    { type: 'consume-editor-handoff', handoffID: '../Quarterly Report.docx' },
-    { url: `${extensionOrigin}/editor.html?handoff=../Quarterly%20Report.docx` },
+    { type: 'apply-configuration', configuration },
+    { url: returnURL },
     resolve
   );
 });
-assert.deepEqual(malformed, { ok: false });
-
-const senderProtected = await createHandoff();
-const senderProtectedID = senderProtected.editorLaunch.handoff;
-const wrongSender = await new Promise(resolve => {
-  messageListener(
-    { type: 'consume-editor-handoff', handoffID: senderProtectedID },
-    { url: `file:///editor.html?handoff=${senderProtectedID}` },
-    resolve
-  );
+assert.deepEqual(unauthorizedConfiguration, {
+  ok: false,
+  message: 'Configuration request was not authorized.'
 });
-assert.deepEqual(wrongSender, { ok: false });
-const rightSender = await new Promise(resolve => {
-  messageListener(
-    { type: 'consume-editor-handoff', handoffID: senderProtectedID },
-    { url: `${extensionOrigin}/editor.html?handoff=${senderProtectedID}` },
-    resolve
-  );
-});
-assert.equal(rightSender.ok, true);
-
-const expiring = await createHandoff();
-now += 120_001;
-const expired = await new Promise(resolve => {
-  messageListener(
-    { type: 'consume-editor-handoff', handoffID: expiring.editorLaunch.handoff },
-    { url: `${extensionOrigin}/editor.html?handoff=${expiring.editorLaunch.handoff}` },
-    resolve
-  );
-});
-assert.deepEqual(expired, { ok: false });

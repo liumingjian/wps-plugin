@@ -2,18 +2,6 @@
 
 importScripts('configuration.js', 'source-identity-contract.js');
 
-const HANDOFF_STORAGE_KEY = 'editorHandoffs';
-const REVERIFICATION_STORAGE_KEY = 'editorReverifications';
-const HANDOFF_TTL_MS = 120_000;
-const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
-let handoffOperation = Promise.resolve();
-
-function serializedHandoffOperation(operation) {
-  const result = handoffOperation.then(operation, operation);
-  handoffOperation = result.catch(() => {});
-  return result;
-}
-
 function randomHex(byteCount) {
   const bytes = crypto.getRandomValues(new Uint8Array(byteCount));
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -26,11 +14,7 @@ async function configuredIntegration() {
 }
 
 function senderOrigin(sender) {
-  try {
-    return new URL(sender?.url).origin;
-  } catch {
-    return undefined;
-  }
+  try { return new URL(sender?.url).origin; } catch { return undefined; }
 }
 
 async function configurationFor(sender) {
@@ -39,130 +23,22 @@ async function configurationFor(sender) {
   return { ok: true, configuration };
 }
 
-function editorSender(sender) {
-  try {
-    const senderURL = new URL(sender?.url);
-    const editorURL = new URL(chrome.runtime.getURL('editor.html'));
-    return senderURL.protocol === editorURL.protocol && senderURL.host === editorURL.host &&
-      senderURL.pathname === editorURL.pathname;
-  } catch {
-    return false;
-  }
-}
-
-function validatedEditorContext(value, configuration) {
-  const expectedFormat = value?.expectedFormat;
-  if (!value || typeof value.returnURL !== 'string' || typeof value.sourceURL !== 'string' ||
-      typeof value.sourcePath !== 'string' || typeof value.title !== 'string' ||
-      typeof value.filename !== 'string' || !['doc', 'docx'].includes(expectedFormat) ||
-      value.trustedOrigin !== configuration.trustedOrigin || value.gatewayTemplate !== configuration.gatewayTemplate) return undefined;
-  try {
-    const returnURL = new URL(value.returnURL);
-    const sourceURL = new URL(value.sourceURL);
-    if (returnURL.origin !== configuration.trustedOrigin || sourceURL.origin !== configuration.trustedOrigin ||
-        sourceURL.username || sourceURL.password || sourceURL.pathname !== value.sourcePath ||
-        !new RegExp(`\\.${expectedFormat}$`, 'i').test(sourceURL.pathname)) return undefined;
-  } catch {
-    return undefined;
-  }
-  return {
-    returnURL: value.returnURL,
-    trustedOrigin: configuration.trustedOrigin,
-    sourceURL: value.sourceURL,
-    sourcePath: value.sourcePath,
-    title: value.title,
-    filename: value.filename,
-    expectedFormat,
-    gatewayTemplate: configuration.gatewayTemplate
-  };
-}
-
-async function storeHandoff(context, tabID, pendingVerification = false) {
-  const createdAt = Date.now();
-  return serializedHandoffOperation(async () => {
-    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
-    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
-    for (const [id, handoff] of Object.entries(handoffs)) {
-      if (!handoff || handoff.expiresAt <= createdAt) delete handoffs[id];
-    }
-    let handoffID;
-    do { handoffID = randomHex(32); } while (handoffs[handoffID]);
-    handoffs[handoffID] = {
-      ...context,
-      tabID,
-      createdAt,
-      expiresAt: createdAt + HANDOFF_TTL_MS,
-      ...(pendingVerification ? { pendingVerification: true } : {})
-    };
-    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-    return { handoffID, handoff: handoffs[handoffID] };
-  });
-}
-
-function gatewaySiblingURL(configuration, sibling) {
-  const gatewayURL = new URL(configuration.gatewayTemplate.replace(
-    RoadFlowConfiguration.SOURCE_PATH_PLACEHOLDER,
-    encodeURIComponent('/document.docx')
-  ));
-  const segments = gatewayURL.pathname.split('/');
-  segments[segments.length - 1] = sibling;
-  gatewayURL.pathname = segments.join('/');
-  gatewayURL.search = '';
-  return gatewayURL;
-}
-
-async function registerGatewayHandoff(handoffID, handoff, configuration) {
-  const endpoint = gatewaySiblingURL(configuration, 'editor-handoff');
-  const response = await fetch(endpoint.href, {
-    method: 'POST',
-    cache: 'no-store',
-    credentials: 'omit',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      expectedFormat: handoff.expectedFormat,
-      handoff: handoffID,
-      returnURL: handoff.returnURL,
-      sourceIdentity: handoff.sourceIdentity,
-      sourcePath: handoff.sourcePath,
-      title: handoff.title
-    })
-  });
-  if (!response.ok) throw new Error('Gateway rejected the Editor Handoff.');
-  const result = await response.json();
-  if (result?.handoff !== handoffID || Object.keys(result).length !== 1) {
-    throw new Error('Gateway returned an invalid Editor Handoff acknowledgement.');
-  }
-}
-
-function hostedEditorLaunch(handoffID, handoff, configuration) {
-  const documentURL = new URL(configuration.gatewayTemplate.replace(
-    RoadFlowConfiguration.SOURCE_PATH_PLACEHOLDER,
-    encodeURIComponent(handoff.sourcePath)
-  ));
-  documentURL.searchParams.set('_wpsHandoff', handoffID);
-  const receiptURL = gatewaySiblingURL(configuration, 'editor-receipt');
-  receiptURL.searchParams.set('handoff', handoffID);
-  const officeSaveURL = new URL('/RoadFlow/uploadfiles/OfficeSave', configuration.trustedOrigin);
-  officeSaveURL.searchParams.set('fileurl', handoff.sourcePath);
+function editorLaunch(handoff, context) {
+  const officeSaveURL = new URL('/RoadFlow/uploadfiles/OfficeSave', context.trustedOrigin);
+  officeSaveURL.searchParams.set('fileurl', context.sourcePath);
+  const documentURL = new URL(context.sourceURL);
+  // WPS caches opened Documents by URL. A fragment changes that cache key but is
+  // never sent to the OA server, so the original download endpoint is unchanged.
+  documentURL.hash = `roadflow-handoff=${handoff}`;
   return Object.freeze({
     documentURL: documentURL.href,
-    expectedFormat: handoff.expectedFormat,
-    handoff: handoffID,
+    expectedFormat: context.expectedFormat,
+    handoff,
     officeSaveURL: officeSaveURL.href,
-    receiptURL: receiptURL.href,
-    returnURL: handoff.returnURL,
-    sourceIdentity: handoff.sourceIdentity,
-    sourcePath: handoff.sourcePath,
-    title: handoff.title
-  });
-}
-
-function deleteHandoff(handoffID) {
-  return serializedHandoffOperation(async () => {
-    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
-    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
-    delete handoffs[handoffID];
-    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
+    returnURL: context.returnURL,
+    sourceIdentity: context.sourceIdentity,
+    sourcePath: context.sourcePath,
+    title: context.title
   });
 }
 
@@ -172,130 +48,36 @@ async function createEditorHandoff(activation, sender) {
       senderOrigin(sender) !== configuration.trustedOrigin) return { ok: false };
 
   let source;
-  try {
-    source = new URL(activation.sourceURL);
-  } catch {
+  try { source = new URL(activation.sourceURL); } catch { return { ok: false }; }
+  const sourcePath = RoadFlowSourceIdentityContract.sourcePath(source);
+  if (!sourcePath || source.origin !== configuration.trustedOrigin || !/\.docx?$/i.test(sourcePath)) {
     return { ok: false };
   }
-  const sourcePath = source.pathname;
-  if (!['http:', 'https:'].includes(source.protocol) || source.username || source.password ||
-      source.origin !== configuration.trustedOrigin || !/\.docx?$/i.test(sourcePath)) return { ok: false };
+  const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
+  const sourceIdentity = RoadFlowSourceIdentityContract.validate(
+    activation.sourceIdentity, sourcePath, expectedFormat
+  );
+  if (!sourceIdentity) return { ok: false };
 
-  const encodedFilename = sourcePath.slice(sourcePath.lastIndexOf('/') + 1);
+  const encodedFilename = source.pathname.slice(source.pathname.lastIndexOf('/') + 1);
   let filename = encodedFilename;
   try { filename = decodeURIComponent(encodedFilename); } catch {}
   const title = typeof activation.title === 'string' && activation.title.trim()
     ? activation.title.trim().slice(0, 256)
     : filename;
-  const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
-  const sourceIdentity = RoadFlowSourceIdentityContract.validate(
-    activation.sourceIdentity,
-    sourcePath,
-    expectedFormat
-  );
-  if (!sourceIdentity) return { ok: false };
-  const stored = await storeHandoff({
-    returnURL: sender.url,
-    trustedOrigin: configuration.trustedOrigin,
-    sourceURL: source.href,
-    sourcePath,
-    title,
-    filename,
-    expectedFormat,
-    gatewayTemplate: configuration.gatewayTemplate,
-    sourceIdentity
-  }, sender.tab.id);
-  try {
-    await registerGatewayHandoff(stored.handoffID, stored.handoff, configuration);
-    return { ok: true, editorLaunch: hostedEditorLaunch(stored.handoffID, stored.handoff, configuration) };
-  } catch {
-    await deleteHandoff(stored.handoffID);
-    return { ok: false };
-  }
-}
-
-function consumeEditorHandoff(handoffID, sender) {
-  if (!editorSender(sender) || !HANDOFF_ID_PATTERN.test(handoffID || '')) return Promise.resolve({ ok: false });
-  return serializedHandoffOperation(async () => {
-    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
-    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
-    const handoff = handoffs[handoffID];
-    delete handoffs[handoffID];
-    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-    if (!handoff || handoff.pendingVerification || handoff.expiresAt <= Date.now()) return { ok: false };
-    return { ok: true, handoff };
-  });
-}
-
-async function createReverificationHandoff(previousHandoff, sender) {
-  if (!editorSender(sender) || !Number.isInteger(sender?.tab?.id)) return { ok: false };
-  const configuration = await configuredIntegration();
-  const context = validatedEditorContext(previousHandoff, configuration || {});
-  if (!context) return { ok: false };
-  const stored = await storeHandoff(context, sender.tab.id, true);
-  await serializedHandoffOperation(async () => {
-    const session = await chrome.storage.session.get(REVERIFICATION_STORAGE_KEY);
-    const reverifications = session[REVERIFICATION_STORAGE_KEY] || {};
-    reverifications[sender.tab.id] = {
-      handoffID: stored.handoffID,
-      returnURL: context.returnURL,
-      sourceURL: context.sourceURL,
-      expectedFormat: context.expectedFormat,
-      expiresAt: stored.handoff.expiresAt
-    };
-    await chrome.storage.session.set({ [REVERIFICATION_STORAGE_KEY]: reverifications });
-  });
-  return { ok: true, returnURL: context.returnURL };
-}
-
-function claimReverification(sender) {
-  if (!Number.isInteger(sender?.tab?.id)) return Promise.resolve({ ok: false });
-  return serializedHandoffOperation(async () => {
-    const stored = await chrome.storage.session.get(REVERIFICATION_STORAGE_KEY);
-    const reverifications = stored[REVERIFICATION_STORAGE_KEY] || {};
-    const request = reverifications[sender.tab.id];
-    delete reverifications[sender.tab.id];
-    await chrome.storage.session.set({ [REVERIFICATION_STORAGE_KEY]: reverifications });
-    if (!request || request.returnURL !== sender.url || request.expiresAt <= Date.now()) return { ok: false };
-    return {
-      ok: true,
-      handoffID: request.handoffID,
-      sourceURL: request.sourceURL,
-      expectedFormat: request.expectedFormat
-    };
-  });
-}
-
-async function completeReverificationHandoff(handoffID, sourceIdentity, sender) {
-  if (!HANDOFF_ID_PATTERN.test(handoffID || '') || !Number.isInteger(sender?.tab?.id)) {
-    return { ok: false };
-  }
-  const configuration = await configuredIntegration();
-  if (!configuration || senderOrigin(sender) !== configuration.trustedOrigin) return { ok: false };
-  return serializedHandoffOperation(async () => {
-    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
-    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
-    const handoff = handoffs[handoffID];
-    if (!handoff?.pendingVerification || handoff.tabID !== sender.tab.id ||
-        handoff.returnURL !== sender.url || handoff.expiresAt <= Date.now()) return { ok: false };
-    const identity = RoadFlowSourceIdentityContract.validate(sourceIdentity, handoff.sourcePath, handoff.expectedFormat);
-    if (!identity) {
-      delete handoffs[handoffID];
-      await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-      return { ok: false };
-    }
-    delete handoff.pendingVerification;
-    handoff.sourceIdentity = identity;
-    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-    try {
-      await registerGatewayHandoff(handoffID, handoff, configuration);
-      return { ok: true, editorLaunch: hostedEditorLaunch(handoffID, handoff, configuration) };
-    } catch {
-      delete handoffs[handoffID];
-      await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-      return { ok: false };
-    }
-  });
+  const handoff = randomHex(32);
+  return {
+    ok: true,
+    editorLaunch: editorLaunch(handoff, {
+      returnURL: sender.url,
+      trustedOrigin: configuration.trustedOrigin,
+      sourceURL: source.href,
+      sourcePath,
+      title,
+      expectedFormat,
+      sourceIdentity
+    })
+  };
 }
 
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
@@ -305,23 +87,6 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
   }
   if (request?.type === 'create-editor-handoff') {
     createEditorHandoff(request.activation, sender).then(respond).catch(() => respond({ ok: false }));
-    return true;
-  }
-  if (request?.type === 'consume-editor-handoff') {
-    consumeEditorHandoff(request.handoffID, sender).then(respond).catch(() => respond({ ok: false }));
-    return true;
-  }
-  if (request?.type === 'create-reverification-handoff') {
-    createReverificationHandoff(request.previousHandoff, sender).then(respond).catch(() => respond({ ok: false }));
-    return true;
-  }
-  if (request?.type === 'claim-reverification') {
-    claimReverification(sender).then(respond).catch(() => respond({ ok: false }));
-    return true;
-  }
-  if (request?.type === 'complete-reverification-handoff') {
-    completeReverificationHandoff(request.handoffID, request.sourceIdentity, sender)
-      .then(respond).catch(() => respond({ ok: false }));
     return true;
   }
   if (request?.type !== 'apply-configuration') return false;

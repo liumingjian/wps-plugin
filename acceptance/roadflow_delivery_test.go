@@ -65,13 +65,13 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,cfb.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
 		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
 	}
-	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html,hosted-editor.html,hosted-editor.css,hosted-editor.js" ||
+	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "hosted-editor.html,hosted-editor.css,hosted-editor.js" ||
 		strings.Join(manifest.WebAccessibleResources[0].Matches, ",") != "http://*/*,https://*/*" {
 		t.Fatalf("RoadFlow editor navigation resources = %+v", manifest.WebAccessibleResources)
 	}
 
 	for _, name := range []string{
-		"configuration.js", "content.js", "editor.css", "editor.html", "editor.js",
+		"configuration.js", "content.js",
 		"hosted-editor.css", "hosted-editor.html", "hosted-editor.js",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
 		"readiness.js", "service-worker.js", "source-identity-contract.js", "source-identity.js",
@@ -171,10 +171,10 @@ func TestRoadFlowCRXPackagingAndCustomerGuidanceStayOnTheBrowserRoute(t *testing
 	})
 	assertContains(t, filepath.Join(repo, "scripts", "package-crx.sh"), []string{"package-fixed-id-crx.sh"})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-customer-installation.md"), []string{
-		"Trusted OA Origin", "Gateway URL template", "exactly one `{sourcePath}`", "without rebuilding",
+		"Trusted OA Origin", "No Gateway", "original OA URL", "OfficeSave",
 		"Configuration required", "WPS or browser plugin unavailable", "Environment ready",
-		"read-only", "byte-preserving", "trusted office network", "No DEB", "historical",
-		"@zip.js/zip.js 2.8.34", "CFB 1.2.2", "mscfb v1.0.7", "WordDocument", "2,048 archive members", "100:1", "25 MiB", "100 MiB", "not retained",
+		"No DEB", "same-Origin", "decoded exactly once", "repeated slashes",
+		"@zip.js/zip.js 2.8.34", "CFB 1.2.2", "mscfb v1.0.7", "WordDocument", "2,048 archive-member", "100:1", "25 MiB", "100 MiB", "not retained",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "adr", "0006-use-browser-hosted-wps-for-roadflow.md"), []string{
 		"designated Kylin", "Qaxbrowser", "NPAPI", "RoadFlow", "ADR 0001", "ADR 0005", "separate extension identity",
@@ -187,25 +187,23 @@ func TestRoadFlowProductionAcceptanceCoversTheRealCustomerBoundary(t *testing.T)
 		"@playwright/test", "test:browser",
 	})
 	assertContains(t, filepath.Join(repo, "roadflow-extension", "editor.browser.test.mjs"), []string{
-		"failed Document Identity Gate", "overwriteCalls", "Recoverable Overwrite Failure",
-		"public OA workflow", "fresh handoff", "horizontalOverflow", "narrow",
+		"original OA URL directly", "overwriteCalls", "recoverable failure",
+		"decoded customer path", "revision tracking", "horizontalOverflow", "narrow",
 	})
 	assertContains(t, filepath.Join(repo, "roadflow-extension", "testdata", "mock-oa.html"), []string{
 		`<a href="/UploadFiles/2026/Quarterly%20Report.DOCX">Quarterly Report</a>`,
 		`<script src="/content.js"></script>`,
 	})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-production-acceptance.md"), []string{
-		"real Gateway", "DOCX", "DOC", "same tab", "authenticated OA",
-		"Temporary OA simulation", "ordinary `<a>` Document Link", "not authenticated customer OA",
-		"fixed CRX Origin", "Access-Control-Allow-Origin", "retention", "cleanup",
-		"10-second verification timeout", "Authentication loss", "Wrong Document",
-		"Stale cache", "Missing receipt", "Mismatched receipt", "WPS failure",
-		"Recoverable Overwrite Failure", "Retry", "Discard", "Return failure", "zero new OfficeSave requests",
-		"no Native Messaging", "no local agent", "no product middleware", "no system repair",
+		"DOCX", "DOC", "same-Origin", "second tab", "original OA URL",
+		"Local simulation is not customer acceptance", "ordinary OA Document link",
+		"revision tracking", "OfficeSave", "fresh click", "cleanup",
+		"malformed", "Cross-Origin", "revision interface", "allow one explicit", "discard confirmation",
+		"Direct OA mode deliberately has no Gateway receipt",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-production-acceptance-result.md"), []string{
-		"NOT EXECUTED", "NOT ACCEPTED", "Signed CRX SHA-256", "Gateway deployment revision",
-		"DOCX pass/fail", "DOC pass/fail", "zero delta in OfficeSave requests",
+		"NOT EXECUTED", "NOT ACCEPTED", "Signed CRX SHA-256", "Trusted OA Origin",
+		"DOCX direct open", "DOC direct open", "Chinese filename", "OfficeSave retry",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-local-simulated-acceptance-result.md"), []string{
 		"ACCEPTED FOR ISSUE #52 LOCAL END-TO-END SCOPE", "qaxbrowser-safe-stable 1.0.46402.2-1",
@@ -220,15 +218,15 @@ func TestRoadFlowCustomerSimulatorHasOneDocumentedStartStopAndConfigurationPath(
 		"go run ./cmd/roadflow-simulator",
 	})
 	assertContains(t, filepath.Join(repo, "roadflowsimulator", "simulator.go"), []string{
-		"NewOfficeSaveHandler", "roadflowgateway.NewHandler", "/login", "/logout",
-		"/simulator/status", "Acceptance.doc", "GatewayTemplate",
+		"NewOfficeSaveHandler", "/login", "/logout",
+		"/simulator/status", "Acceptance.doc", "Content-Disposition",
 	})
 	if info, err := os.Stat(filepath.Join(repo, "roadflowsimulator", "testdata", "Acceptance.doc")); err != nil || info.Size() != 10_240 {
 		t.Fatalf("real WPS-generated simulator Acceptance.doc = %v, info = %v", err, info)
 	}
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-local-manual-acceptance-zh.md"), []string{
 		"bash ./scripts/run-roadflow-simulator.sh", "http://127.0.0.1:4317",
-		"http://127.0.0.1:4318/wps/document?fileurl={sourcePath}", "Ctrl+C",
-		"模拟登录", "打开验收文档 Acceptance.doc", "OfficeSave", "Editor Receipt",
+		"不需要 Gateway", "Ctrl+C", "模拟登录", "打开验收文档 Acceptance.doc",
+		"OfficeSave", "修订记录",
 	})
 }

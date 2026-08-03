@@ -40,27 +40,8 @@ async function openHostedEditor(editorLaunch) {
   location.replace(URL.createObjectURL(editorBlob));
 }
 
-async function resumeReverification() {
-  const claim = await chrome.runtime.sendMessage({ type: 'claim-reverification' });
-  if (!claim?.ok) return;
-  const identityResult = await RoadFlowSourceIdentity.derive(claim.sourceURL, claim.expectedFormat);
-  if (!identityResult.ok) {
-    window.alert(identityResult.message);
-    return;
-  }
-  const completed = await chrome.runtime.sendMessage({
-    type: 'complete-reverification-handoff',
-    handoffID: claim.handoffID,
-    sourceIdentity: identityResult.identity
-  });
-  if (completed?.ok && completed.editorLaunch) await openHostedEditor(completed.editorLaunch);
-  else if (completed?.ok) location.replace(completed.editorURL);
-  else window.alert(VERIFICATION_FAILURE_MESSAGE);
-}
-
 chrome.runtime.sendMessage({ type: 'configuration' }).then(response => {
   if (response?.ok) configuration = response.configuration;
-  return resumeReverification();
 }).catch(() => {});
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -86,9 +67,8 @@ async function enterPackagedEditor(source, title) {
     type: 'create-editor-handoff',
     activation
   });
-  if (response?.ok) {
-    if (response.editorLaunch) await openHostedEditor(response.editorLaunch);
-    else location.replace(response.editorURL);
+  if (response?.ok && response.editorLaunch) {
+    await openHostedEditor(response.editorLaunch);
   } else {
     window.alert(VERIFICATION_FAILURE_MESSAGE);
   }

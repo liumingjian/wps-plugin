@@ -11,28 +11,18 @@ assert.deepEqual(validate({
 }), {
   ok: true,
   value: {
-    trustedOrigin: 'https://oa.example.test',
-    gatewayTemplate: 'https://gateway.example.test/wps/document?fileurl={sourcePath}'
+    trustedOrigin: 'https://oa.example.test'
   }
 });
 assert.deepEqual(RoadFlowConfiguration.permissionPatterns({
-  trustedOrigin: 'https://oa.example.test',
-  gatewayTemplate: 'https://gateway.example.test/wps/document?fileurl={sourcePath}'
-}), ['https://oa.example.test/*', 'https://gateway.example.test/*']);
-assert.deepEqual(RoadFlowConfiguration.permissionPatterns({
-  trustedOrigin: 'https://oa.example.test',
-  gatewayTemplate: 'https://oa.example.test/wps/document?fileurl={sourcePath}'
+  trustedOrigin: 'https://oa.example.test'
 }), ['https://oa.example.test/*']);
 
 for (const input of [
-  { trustedOrigin: '', gatewayTemplate: 'https://gateway.example.test/{sourcePath}' },
-  { trustedOrigin: 'https://oa.example.test/path', gatewayTemplate: 'https://gateway.example.test/{sourcePath}' },
-  { trustedOrigin: 'https://alice:secret@oa.example.test', gatewayTemplate: 'https://gateway.example.test/{sourcePath}' },
-  { trustedOrigin: 'file:///oa', gatewayTemplate: 'https://gateway.example.test/{sourcePath}' },
-  { trustedOrigin: 'https://oa.example.test', gatewayTemplate: 'https://gateway.example.test/document' },
-  { trustedOrigin: 'https://oa.example.test', gatewayTemplate: 'https://gateway.example.test/{sourcePath}/{sourcePath}' },
-  { trustedOrigin: 'https://oa.example.test', gatewayTemplate: 'https://alice:secret@gateway.example.test/{sourcePath}' },
-  { trustedOrigin: 'https://oa.example.test', gatewayTemplate: 'file:///gateway/{sourcePath}' }
+  { trustedOrigin: '' },
+  { trustedOrigin: 'https://oa.example.test/path' },
+  { trustedOrigin: 'https://alice:secret@oa.example.test' },
+  { trustedOrigin: 'file:///oa' }
 ]) {
   const result = validate(input);
   assert.equal(result.ok, false, `accepted ${JSON.stringify(input)}`);

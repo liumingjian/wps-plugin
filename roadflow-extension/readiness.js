@@ -5,7 +5,7 @@ function evaluate(configuration, environment) {
     return Object.freeze({
       state: 'missing-configuration',
       title: 'Configuration required',
-      guidance: 'Open extension settings and save one Trusted OA Origin and one Gateway URL template.'
+      guidance: 'Open extension settings and save the Trusted OA Origin.'
     });
   }
   if (!environment.npapiAvailable) {

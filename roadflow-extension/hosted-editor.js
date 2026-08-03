@@ -1,8 +1,6 @@
 'use strict';
 
 const HANDOFF_PATTERN = /^[a-f0-9]{64}$/;
-const RECEIPT_TIMEOUT_MS = 10_000;
-const RECEIPT_POLL_MS = 250;
 const title = document.querySelector('#document-title');
 const sourceLabel = document.querySelector('#source-label');
 const status = document.querySelector('#editor-status');
@@ -42,15 +40,13 @@ function validatedContext(value, handoff) {
       !/^[a-f0-9]{64}$/.test(value.sourceIdentity?.sha256 || '') || typeof value.title !== 'string' ||
       typeof value.returnURL !== 'string') return undefined;
   const documentURL = validHTTPURL(value.documentURL);
-  const receiptURL = validHTTPURL(value.receiptURL);
   const officeSaveURL = validHTTPURL(value.officeSaveURL);
   const returnURL = validHTTPURL(value.returnURL);
-  const embedded = Boolean(globalThis.RoadFlowEditorContext);
-  if (!documentURL || !receiptURL || !officeSaveURL || !returnURL ||
-      (embedded && (documentURL.origin !== receiptURL.origin || officeSaveURL.origin !== location.origin ||
-        returnURL.origin !== location.origin)) ||
-      (!embedded && (documentURL.origin !== location.origin || receiptURL.origin !== location.origin)) ||
-      documentURL.searchParams.get('_wpsHandoff') !== handoff || receiptURL.searchParams.get('handoff') !== handoff) {
+  let documentPath;
+  try { documentPath = decodeURI(documentURL?.pathname); } catch {}
+  if (!documentURL || !officeSaveURL || !returnURL || documentURL.origin !== location.origin ||
+      officeSaveURL.origin !== location.origin || returnURL.origin !== location.origin ||
+      documentPath !== value.sourcePath || officeSaveURL.searchParams.get('fileurl') !== value.sourcePath) {
     return undefined;
   }
   return value;
@@ -100,30 +96,19 @@ async function waitForActiveDocument() {
   throw new Error('WPS ActiveDocument 创建超时');
 }
 
-function validReceipt(value, handoff, identity) {
-  if (!value || value.handoff !== handoff || value.sourcePath !== identity.sourcePath ||
-      value.actualFormat !== identity.actualFormat || value.byteCount !== identity.byteCount ||
-      value.sha256 !== identity.sha256 || typeof value.deliveredAt !== 'string') return false;
-  return Number.isFinite(Date.parse(value.deliveredAt));
-}
+function enableRevisionTracking() {
+  const activeDocument = application?.ActiveDocument;
+  const view = activeDocument?.ActiveWindow?.View || application?.ActiveWindow?.View;
+  if (!activeDocument || !view) throw new Error('WPS 修订接口不可用');
 
-async function waitForReceipt(context) {
-  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const response = await fetch(context.receiptURL, { cache: 'no-store', credentials: 'omit' });
-    if (response.status === 204 || response.status === 404) {
-      await delay(RECEIPT_POLL_MS);
-      continue;
-    }
-    if (response.status === 409) throw new Error('Gateway 回执冲突');
-    if (!response.ok) throw new Error('Gateway 回执查询失败');
-    const receipt = await response.json();
-    if (!validReceipt(receipt, context.handoff, context.sourceIdentity)) {
-      throw new Error('Gateway 回执与 OA 文档不一致');
-    }
-    return;
+  activeDocument.TrackRevisions = true;
+  view.RevisionsView = 0;
+  view.ShowRevisionsAndComments = true;
+  view.ShowInsertionsAndDeletions = true;
+  if (!activeDocument.TrackRevisions || !view.ShowRevisionsAndComments ||
+      !view.ShowInsertionsAndDeletions || Number(view.RevisionsView) !== 0) {
+    throw new Error('WPS 未能开启修订留痕');
   }
-  throw new Error('Gateway 回执验证超时');
 }
 
 function showFailure(error) {
@@ -154,7 +139,7 @@ async function enterEditor() {
   application = await waitForApplication();
   application.openDocument(context.documentURL, false);
   await waitForActiveDocument();
-  await waitForReceipt(context);
+  enableRevisionTracking();
   host.className = 'unlocked';
   editorState = 'editable';
   status.textContent = '正文可编辑';

@@ -223,13 +223,14 @@
       return {
         ok: true,
         identity: {
-          sourcePath: source.pathname,
+          sourcePath: RoadFlowSourceIdentityContract.sourcePath(source),
           actualFormat: expectedFormat,
           byteCount: bytes.byteLength,
           sha256: Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
         }
       };
-    } catch {
+    } catch (error) {
+      if (globalThis.chrome?.runtime?.id) console.error('RoadFlow source validation failed:', error);
       return { ok: false, message: FAILURE_MESSAGE };
     }
   }

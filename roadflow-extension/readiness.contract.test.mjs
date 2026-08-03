@@ -6,8 +6,7 @@ vm.runInThisContext(await readFile(new URL('./configuration.js', import.meta.url
 vm.runInThisContext(await readFile(new URL('./readiness.js', import.meta.url), 'utf8'), { filename: 'readiness.js' });
 
 const validConfiguration = {
-  trustedOrigin: 'https://oa.example.test',
-  gatewayTemplate: 'https://gateway.example.test/wps?fileurl={sourcePath}'
+  trustedOrigin: 'https://oa.example.test'
 };
 const cases = [
   [{}, { npapiAvailable: true }, 'missing-configuration', 'Open extension settings'],

@@ -6,7 +6,7 @@ let clickListener;
 let storageListener;
 let replacementURL;
 const validIdentity = {
-  sourcePath: '/documents/Quarterly%20Report.DOCX',
+  sourcePath: '/documents/Quarterly Report.DOCX',
   actualFormat: 'docx',
   byteCount: 4096,
   sha256: 'a'.repeat(64)
@@ -22,11 +22,10 @@ const assetFetches = [];
 let generatedEditorBlob;
 const hostedHandoff = 'e'.repeat(64);
 const hostedLaunch = {
-  documentURL: `https://gateway.example.test/wps/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&_wpsHandoff=${hostedHandoff}`,
+  documentURL: 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1',
   expectedFormat: 'docx',
   handoff: hostedHandoff,
   officeSaveURL: 'https://oa.example.test/RoadFlow/uploadfiles/OfficeSave?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX',
-  receiptURL: `https://gateway.example.test/wps/editor-receipt?handoff=${hostedHandoff}`,
   returnURL: 'https://oa.example.test/workflow/current?step=review#document',
   sourceIdentity: validIdentity,
   sourcePath: validIdentity.sourcePath,
@@ -89,7 +88,6 @@ globalThis.chrome = {
       if (message.type === 'configuration') {
         return { ok: true, configuration: { trustedOrigin: 'https://oa.example.test' } };
       }
-      if (message.type === 'claim-reverification') return { ok: false };
       if (handoffResponse instanceof Error) throw handoffResponse;
       return handoffResponse;
     }
@@ -157,7 +155,6 @@ assert.deepEqual(identityRequests, [{
 }]);
 assert.deepEqual(messages, [
   { type: 'configuration' },
-  { type: 'claim-reverification' },
   {
     type: 'create-editor-handoff',
     activation: {
@@ -181,12 +178,24 @@ assert.match(generatedHTML, /hostedEditorStarted = true/);
 assert.doesNotMatch(generatedHTML, /chrome-extension:\/\/fixed\/editor\.html/);
 
 const docMessageCount = messages.length;
-handoffResponse = { ok: true, editorURL: 'chrome-extension://fixed/editor.html?handoff=opaque-id' };
 const validDOCIdentity = {
   sourcePath: '/documents/Legacy.DOC',
   actualFormat: 'doc',
   byteCount: 3072,
   sha256: 'b'.repeat(64)
+};
+handoffResponse = {
+  ok: true,
+  editorLaunch: {
+    documentURL: 'https://oa.example.test/documents/Legacy.DOC',
+    expectedFormat: 'doc',
+    handoff: 'f'.repeat(64),
+    officeSaveURL: 'https://oa.example.test/RoadFlow/uploadfiles/OfficeSave?fileurl=%2Fdocuments%2FLegacy.DOC',
+    returnURL: 'https://oa.example.test/workflow/current?step=review#document',
+    sourceIdentity: validDOCIdentity,
+    sourcePath: validDOCIdentity.sourcePath,
+    title: 'Legacy Document'
+  }
 };
 nextIdentityResult = { ok: true, identity: validDOCIdentity };
 clickListener({
@@ -207,7 +216,7 @@ assert.deepEqual(identityRequests.at(-1), {
   sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
   expectedFormat: 'doc'
 });
-assert.equal(assetFetches.length, 3);
+assert.equal(assetFetches.length, 6);
 assert.deepEqual(messages.at(-1), {
   type: 'create-editor-handoff',
   activation: {
