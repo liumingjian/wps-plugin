@@ -1,6 +1,6 @@
 # RoadFlow local simulated acceptance result
 
-Status: **ACCEPTED FOR THE REVISED #51 SCOPE**
+Status: **ACCEPTED FOR ISSUE #52 LOCAL END-TO-END SCOPE**
 
 Date: 2026-08-02
 
@@ -8,6 +8,9 @@ This result accepts the RoadFlow route at the agreed endpoint: a simulated OA
 Document Link and mock server on the designated local Kylin/Qaxbrowser/WPS
 machine. It makes no claim about a customer OA or customer Gateway. The separate
 production template remains `NOT ACCEPTED`.
+
+To repeat this acceptance manually, use the Chinese step-by-step runbook in
+[`roadflow-local-manual-acceptance-zh.md`](roadflow-local-manual-acceptance-zh.md).
 
 ## Accepted scope
 
@@ -24,8 +27,8 @@ production template remains `NOT ACCEPTED`.
 
 | Field | Observed value |
 | --- | --- |
-| Repository commit under test | `cd1cf47b57de78412f816b2763dd3d6bcb7afb0d` |
-| UTC completion | `2026-08-02T07:10:03Z` |
+| Repository base commit under test | `514afe46eb7920e2f894be520c4abe4d8cf4630f` plus current worktree |
+| UTC completion | `2026-08-02T13:47:49Z` |
 | OS | Kylin V10 SP1, Linux `5.4.18-142-generic`, AArch64 |
 | Qaxbrowser | `qaxbrowser-safe-stable 1.0.46402.2-1`, Chromium `102.0.5005.200` |
 | WPS | `wps-office 12.1.2.26885.AK.preread.sw` |
@@ -43,6 +46,7 @@ production template remains `NOT ACCEPTED`.
 | Failed Document Identity Gate | WPS object absent, Save disabled, zero overwrite calls |
 | Recoverable Overwrite Failure | Live WPS object retained; retry occurs only on the next Save action |
 | Simulated OA public workflow | Same tab, Save, Return, and different fresh handoff on reopen |
+| Packaged editor handoff | OA-Origin Blob assembled from extension assets; no source path in URL |
 
 ## Current-machine NPAPI evidence
 
@@ -55,26 +59,26 @@ repository mock server. Browser and process inspection proved:
   Document;
 - Qaxbrowser started its `--type=npapi-plugin` process with
   `libbrowsergrapher.so`, and WPS started with `-automation -x11embed`;
-- WPS fetched `/documents/acceptance/content` with the Microsoft DAV User-Agent;
-- inserting marker `LOCAL-ACCEPTANCE-20260802` and choosing Save produced one
-  multipart POST and receipt `145411e419914637b0b09c2e86382cea`;
-- Return invoked the WPS exit path; reopening with cache identity
-  `reopen-20260802` opened an active Document whose content still contained the
-  marker.
+- WPS fetched `/wps/document` with the Microsoft DAV User-Agent and a fresh
+  `_wpsHandoff`;
+- inserting marker `ROADFLOW-REVIEWED-E2E-20260802-2205` and choosing Save produced
+  an authenticated multipart `OfficeSave` POST;
+- Return restored `http://127.0.0.1:4317/`; reopening used a new Blob UUID and
+  WPS `ActiveDocument.Content.Text` still contained the marker.
 
 | Evidence | SHA-256 |
 | --- | --- |
-| Stored edited Document | `fd18f34262830e2e9dee93cfb7668578e71208633a996a7574cb9f16b497b1d1` |
-| Mock overwrite receipt | `b08b440a2ff34da4352800bc82111d4d6be76cd8a4adaf92b3cdc563c89f6878` |
-| Mock server log | `dca4a0f7171b7a6dffab72d00d65a265266117ca99718dfa32b37cafb315127b` |
-| Reopened WPS viewport screenshot | `0c6abd6a2af5c2faac98fc96d018fdea37316792738c975f5c81a27e2dcabe30` |
+| Clean source Document | `fd18f34262830e2e9dee93cfb7668578e71208633a996a7574cb9f16b497b1d1` |
+| Stored edited Document | `bdaa875878f5022035104c1d235ba5b075e6c05ff3fc3c17fa6f46bf1fada46f` |
+| Reopened WPS editor screenshot | `d197b1192a3b3f27e9c3ddf24cf571b5388b3804ffd3a9c565afc8beb80765d7` |
+| Signed CRX 1.0.2 | `59f855722f3768c1e603ae942e4a83af5565ce215a86ad8930d34f4104f26893` |
 
 ## Compatibility decision
 
 The current WPS `saveURL_FormData` upload is a CFB/OLE Word Document even when
 the initial mock source is DOCX. The local mock server preserves the submitted
 artifact byte-for-byte, and current WPS reopens it with the saved marker. The
-revised #51 scope accepts that local behavior; it does not claim DOCX
+issue #52 local scope accepts that local behavior; it does not claim DOCX
 serialization preservation or customer OA compatibility.
 
 ## Delivery boundary

@@ -2,6 +2,43 @@
 
 let configuration;
 const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
+const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
+
+async function packagedText(name) {
+  const response = await fetch(chrome.runtime.getURL(name));
+  if (!response.ok) throw new Error(`Packaged editor asset is unavailable: ${name}`);
+  return response.text();
+}
+
+function encodedUTF8(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+async function openHostedEditor(editorLaunch) {
+  if (!HANDOFF_ID_PATTERN.test(editorLaunch?.handoff || '')) throw new Error('Editor Handoff is invalid.');
+  const [html, css, javascript] = await Promise.all([
+    packagedText('hosted-editor.html'),
+    packagedText('hosted-editor.css'),
+    packagedText('hosted-editor.js')
+  ]);
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const stylesheet = parsed.querySelector('link[rel="stylesheet"]');
+  const editorScript = parsed.querySelector('script[src]');
+  if (!stylesheet || !editorScript) throw new Error('Packaged editor shell is invalid.');
+  const style = parsed.createElement('style');
+  style.textContent = css;
+  stylesheet.replaceWith(style);
+  const contextScript = parsed.createElement('script');
+  contextScript.textContent = `globalThis.RoadFlowEditorContext=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('${encodedUTF8(JSON.stringify(editorLaunch))}'),character=>character.charCodeAt(0))));`;
+  editorScript.before(contextScript);
+  editorScript.removeAttribute('src');
+  editorScript.textContent = javascript;
+  const editorBlob = new Blob([`<!doctype html>${parsed.documentElement.outerHTML}`], { type: 'text/html' });
+  location.replace(URL.createObjectURL(editorBlob));
+}
 
 async function resumeReverification() {
   const claim = await chrome.runtime.sendMessage({ type: 'claim-reverification' });
@@ -16,7 +53,8 @@ async function resumeReverification() {
     handoffID: claim.handoffID,
     sourceIdentity: identityResult.identity
   });
-  if (completed?.ok) location.replace(completed.editorURL);
+  if (completed?.ok && completed.editorLaunch) await openHostedEditor(completed.editorLaunch);
+  else if (completed?.ok) location.replace(completed.editorURL);
   else window.alert(VERIFICATION_FAILURE_MESSAGE);
 }
 
@@ -49,7 +87,8 @@ async function enterPackagedEditor(source, title) {
     activation
   });
   if (response?.ok) {
-    location.replace(response.editorURL);
+    if (response.editorLaunch) await openHostedEditor(response.editorLaunch);
+    else location.replace(response.editorURL);
   } else {
     window.alert(VERIFICATION_FAILURE_MESSAGE);
   }

@@ -65,13 +65,14 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,cfb.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
 		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
 	}
-	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html" ||
+	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html,hosted-editor.html,hosted-editor.css,hosted-editor.js" ||
 		strings.Join(manifest.WebAccessibleResources[0].Matches, ",") != "http://*/*,https://*/*" {
 		t.Fatalf("RoadFlow editor navigation resources = %+v", manifest.WebAccessibleResources)
 	}
 
 	for _, name := range []string{
 		"configuration.js", "content.js", "editor.css", "editor.html", "editor.js",
+		"hosted-editor.css", "hosted-editor.html", "hosted-editor.js",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
 		"readiness.js", "service-worker.js", "source-identity-contract.js", "source-identity.js",
 		"zip-core.min.js", "zip-js.LICENSE", "cfb.min.js", "cfb.LICENSE",
@@ -207,8 +208,27 @@ func TestRoadFlowProductionAcceptanceCoversTheRealCustomerBoundary(t *testing.T)
 		"DOCX pass/fail", "DOC pass/fail", "zero delta in OfficeSave requests",
 	})
 	assertContains(t, filepath.Join(repo, "docs", "roadflow-local-simulated-acceptance-result.md"), []string{
-		"ACCEPTED FOR THE REVISED #51 SCOPE", "qaxbrowser-safe-stable 1.0.46402.2-1",
-		"Kingsoft WPS Plugin", "Microsoft DAV User-Agent", "LOCAL-ACCEPTANCE-20260802",
+		"ACCEPTED FOR ISSUE #52 LOCAL END-TO-END SCOPE", "qaxbrowser-safe-stable 1.0.46402.2-1",
+		"Kingsoft WPS Plugin", "Microsoft DAV User-Agent", "ROADFLOW-REVIEWED-E2E-20260802-2205",
 		"CFB/OLE Word Document", "ACCEPTED FOR SIMULATED OA AND LOCAL ENVIRONMENT",
+	})
+}
+
+func TestRoadFlowCustomerSimulatorHasOneDocumentedStartStopAndConfigurationPath(t *testing.T) {
+	repo := repoRoot(t)
+	assertContains(t, filepath.Join(repo, "scripts", "run-roadflow-simulator.sh"), []string{
+		"go run ./cmd/roadflow-simulator",
+	})
+	assertContains(t, filepath.Join(repo, "roadflowsimulator", "simulator.go"), []string{
+		"NewOfficeSaveHandler", "roadflowgateway.NewHandler", "/login", "/logout",
+		"/simulator/status", "Acceptance.doc", "GatewayTemplate",
+	})
+	if info, err := os.Stat(filepath.Join(repo, "roadflowsimulator", "testdata", "Acceptance.doc")); err != nil || info.Size() != 10_240 {
+		t.Fatalf("real WPS-generated simulator Acceptance.doc = %v, info = %v", err, info)
+	}
+	assertContains(t, filepath.Join(repo, "docs", "roadflow-local-manual-acceptance-zh.md"), []string{
+		"bash ./scripts/run-roadflow-simulator.sh", "http://127.0.0.1:4317",
+		"http://127.0.0.1:4318/wps/document?fileurl={sourcePath}", "Ctrl+C",
+		"模拟登录", "打开验收文档 Acceptance.doc", "OfficeSave", "Editor Receipt",
 	})
 }

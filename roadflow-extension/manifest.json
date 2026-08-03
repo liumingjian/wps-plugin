@@ -13,7 +13,7 @@
     "run_at": "document_start"
   }],
   "web_accessible_resources": [{
-    "resources": ["editor.html"],
+    "resources": ["editor.html", "hosted-editor.html", "hosted-editor.css", "hosted-editor.js"],
     "matches": ["http://*/*", "https://*/*"]
   }],
   "action": { "default_title": "RoadFlow WPS readiness", "default_popup": "readiness.html" },

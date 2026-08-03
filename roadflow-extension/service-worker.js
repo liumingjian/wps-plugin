@@ -77,7 +77,7 @@ function validatedEditorContext(value, configuration) {
   };
 }
 
-async function storeHandoff(context, pendingVerification = false, retryTabID) {
+async function storeHandoff(context, tabID, pendingVerification = false) {
   const createdAt = Date.now();
   return serializedHandoffOperation(async () => {
     const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
@@ -89,12 +89,80 @@ async function storeHandoff(context, pendingVerification = false, retryTabID) {
     do { handoffID = randomHex(32); } while (handoffs[handoffID]);
     handoffs[handoffID] = {
       ...context,
+      tabID,
       createdAt,
       expiresAt: createdAt + HANDOFF_TTL_MS,
-      ...(pendingVerification ? { pendingVerification: true, retryTabID } : {})
+      ...(pendingVerification ? { pendingVerification: true } : {})
     };
     await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
     return { handoffID, handoff: handoffs[handoffID] };
+  });
+}
+
+function gatewaySiblingURL(configuration, sibling) {
+  const gatewayURL = new URL(configuration.gatewayTemplate.replace(
+    RoadFlowConfiguration.SOURCE_PATH_PLACEHOLDER,
+    encodeURIComponent('/document.docx')
+  ));
+  const segments = gatewayURL.pathname.split('/');
+  segments[segments.length - 1] = sibling;
+  gatewayURL.pathname = segments.join('/');
+  gatewayURL.search = '';
+  return gatewayURL;
+}
+
+async function registerGatewayHandoff(handoffID, handoff, configuration) {
+  const endpoint = gatewaySiblingURL(configuration, 'editor-handoff');
+  const response = await fetch(endpoint.href, {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'omit',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      expectedFormat: handoff.expectedFormat,
+      handoff: handoffID,
+      returnURL: handoff.returnURL,
+      sourceIdentity: handoff.sourceIdentity,
+      sourcePath: handoff.sourcePath,
+      title: handoff.title
+    })
+  });
+  if (!response.ok) throw new Error('Gateway rejected the Editor Handoff.');
+  const result = await response.json();
+  if (result?.handoff !== handoffID || Object.keys(result).length !== 1) {
+    throw new Error('Gateway returned an invalid Editor Handoff acknowledgement.');
+  }
+}
+
+function hostedEditorLaunch(handoffID, handoff, configuration) {
+  const documentURL = new URL(configuration.gatewayTemplate.replace(
+    RoadFlowConfiguration.SOURCE_PATH_PLACEHOLDER,
+    encodeURIComponent(handoff.sourcePath)
+  ));
+  documentURL.searchParams.set('_wpsHandoff', handoffID);
+  const receiptURL = gatewaySiblingURL(configuration, 'editor-receipt');
+  receiptURL.searchParams.set('handoff', handoffID);
+  const officeSaveURL = new URL('/RoadFlow/uploadfiles/OfficeSave', configuration.trustedOrigin);
+  officeSaveURL.searchParams.set('fileurl', handoff.sourcePath);
+  return Object.freeze({
+    documentURL: documentURL.href,
+    expectedFormat: handoff.expectedFormat,
+    handoff: handoffID,
+    officeSaveURL: officeSaveURL.href,
+    receiptURL: receiptURL.href,
+    returnURL: handoff.returnURL,
+    sourceIdentity: handoff.sourceIdentity,
+    sourcePath: handoff.sourcePath,
+    title: handoff.title
+  });
+}
+
+function deleteHandoff(handoffID) {
+  return serializedHandoffOperation(async () => {
+    const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
+    const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
+    delete handoffs[handoffID];
+    await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
   });
 }
 
@@ -136,10 +204,14 @@ async function createEditorHandoff(activation, sender) {
     expectedFormat,
     gatewayTemplate: configuration.gatewayTemplate,
     sourceIdentity
-  });
-  const editorURL = new URL(chrome.runtime.getURL('editor.html'));
-  editorURL.searchParams.set('handoff', stored.handoffID);
-  return { ok: true, editorURL: editorURL.href };
+  }, sender.tab.id);
+  try {
+    await registerGatewayHandoff(stored.handoffID, stored.handoff, configuration);
+    return { ok: true, editorLaunch: hostedEditorLaunch(stored.handoffID, stored.handoff, configuration) };
+  } catch {
+    await deleteHandoff(stored.handoffID);
+    return { ok: false };
+  }
 }
 
 function consumeEditorHandoff(handoffID, sender) {
@@ -160,7 +232,7 @@ async function createReverificationHandoff(previousHandoff, sender) {
   const configuration = await configuredIntegration();
   const context = validatedEditorContext(previousHandoff, configuration || {});
   if (!context) return { ok: false };
-  const stored = await storeHandoff(context, true, sender.tab.id);
+  const stored = await storeHandoff(context, sender.tab.id, true);
   await serializedHandoffOperation(async () => {
     const session = await chrome.storage.session.get(REVERIFICATION_STORAGE_KEY);
     const reverifications = session[REVERIFICATION_STORAGE_KEY] || {};
@@ -194,15 +266,17 @@ function claimReverification(sender) {
   });
 }
 
-function completeReverificationHandoff(handoffID, sourceIdentity, sender) {
+async function completeReverificationHandoff(handoffID, sourceIdentity, sender) {
   if (!HANDOFF_ID_PATTERN.test(handoffID || '') || !Number.isInteger(sender?.tab?.id)) {
-    return Promise.resolve({ ok: false });
+    return { ok: false };
   }
+  const configuration = await configuredIntegration();
+  if (!configuration || senderOrigin(sender) !== configuration.trustedOrigin) return { ok: false };
   return serializedHandoffOperation(async () => {
     const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
     const handoffs = stored[HANDOFF_STORAGE_KEY] || {};
     const handoff = handoffs[handoffID];
-    if (!handoff?.pendingVerification || handoff.retryTabID !== sender.tab.id ||
+    if (!handoff?.pendingVerification || handoff.tabID !== sender.tab.id ||
         handoff.returnURL !== sender.url || handoff.expiresAt <= Date.now()) return { ok: false };
     const identity = RoadFlowSourceIdentityContract.validate(sourceIdentity, handoff.sourcePath, handoff.expectedFormat);
     if (!identity) {
@@ -211,12 +285,16 @@ function completeReverificationHandoff(handoffID, sourceIdentity, sender) {
       return { ok: false };
     }
     delete handoff.pendingVerification;
-    delete handoff.retryTabID;
     handoff.sourceIdentity = identity;
     await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
-    const editorURL = new URL(chrome.runtime.getURL('editor.html'));
-    editorURL.searchParams.set('handoff', handoffID);
-    return { ok: true, editorURL: editorURL.href };
+    try {
+      await registerGatewayHandoff(handoffID, handoff, configuration);
+      return { ok: true, editorLaunch: hostedEditorLaunch(handoffID, handoff, configuration) };
+    } catch {
+      delete handoffs[handoffID];
+      await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
+      return { ok: false };
+    }
   });
 }
 

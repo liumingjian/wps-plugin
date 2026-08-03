@@ -3,6 +3,7 @@ package roadflowgateway_test
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +25,136 @@ const (
 	docPath = "/UploadFiles/2026/legacy-report.doc"
 	handoff = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 )
+
+func TestWPSDAVPreflightAllowsDocumentDelivery(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "legacy-report.doc")
+	write(t, target, fixture(t, "original.doc"))
+	gateway := gatewayHandler(t, target, time.Now)
+
+	response := httptest.NewRecorder()
+	gateway.ServeHTTP(response, httptest.NewRequest(http.MethodOptions, "/wps/", nil))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("WPS DAV preflight status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	if allow := response.Header().Get("Allow"); allow != "GET, OPTIONS" {
+		t.Fatalf("WPS DAV preflight Allow = %q", allow)
+	}
+}
+
+func TestFixedExtensionRegistersAnHTTPGatewayEditorHandoff(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "legacy-report.doc")
+	payload := fixture(t, "original.doc")
+	write(t, target, payload)
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	gateway := editorGatewayHandler(t, target, func() time.Time { return now })
+
+	preflight := httptest.NewRequest(http.MethodOptions, "/wps/editor-handoff", nil)
+	preflight.Header.Set("Origin", roadflowgateway.ExtensionOrigin)
+	preflightResponse := httptest.NewRecorder()
+	gateway.ServeHTTP(preflightResponse, preflight)
+	if preflightResponse.Code != http.StatusNoContent ||
+		preflightResponse.Header().Get("Access-Control-Allow-Origin") != roadflowgateway.ExtensionOrigin {
+		t.Fatalf("editor preflight = %d, headers = %v", preflightResponse.Code, preflightResponse.Header())
+	}
+
+	registered := registerEditor(t, gateway, map[string]any{
+		"expectedFormat": "doc",
+		"handoff":        handoff,
+		"returnURL":      "http://127.0.0.1:4317/workflow?id=7#document",
+		"sourceIdentity": map[string]any{
+			"actualFormat": "doc", "byteCount": len(payload),
+			"sha256": fmt.Sprintf("%x", sha256.Sum256(payload)), "sourcePath": docPath,
+		},
+		"sourcePath": docPath,
+		"title":      "Legacy report",
+	}, roadflowgateway.ExtensionOrigin)
+	if registered.Code != http.StatusOK || registered.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("register editor = %d %s", registered.Code, registered.Body.String())
+	}
+	var registration map[string]string
+	if err := json.Unmarshal(registered.Body.Bytes(), &registration); err != nil {
+		t.Fatal(err)
+	}
+	if registration["handoff"] != handoff || len(registration) != 1 {
+		t.Fatalf("editor registration = %#v", registration)
+	}
+
+	for _, unavailablePath := range []string{
+		"/wps/editor?handoff=" + handoff,
+		"/wps/editor-context?handoff=" + handoff,
+		"/wps/editor.js",
+	} {
+		if unavailable := serveGateway(gateway, http.MethodGet, unavailablePath); unavailable.Code != http.StatusNotFound {
+			t.Fatalf("unused Gateway-hosted editor path %s = %d", unavailablePath, unavailable.Code)
+		}
+	}
+
+	beforeDelivery := serveGateway(gateway, http.MethodGet, "/wps/editor-receipt?handoff="+handoff)
+	if beforeDelivery.Code != http.StatusNoContent {
+		t.Fatalf("pre-delivery editor receipt = %d", beforeDelivery.Code)
+	}
+	unknownHandoff := strings.Repeat("b", 64)
+	unknownDelivery := serveGateway(gateway, http.MethodGet, "/wps/document?fileurl="+docPath+"&_wpsHandoff="+unknownHandoff)
+	if unknownDelivery.Code != http.StatusNotFound {
+		t.Fatalf("unregistered editor delivery = %d", unknownDelivery.Code)
+	}
+	deliver(t, gateway, handoff)
+	afterDelivery := serveGateway(gateway, http.MethodGet, "/wps/editor-receipt?handoff="+handoff)
+	if afterDelivery.Code != http.StatusOK || !strings.Contains(afterDelivery.Body.String(), `"handoff":"`+handoff+`"`) ||
+		afterDelivery.Header().Get("Access-Control-Allow-Origin") != "http://127.0.0.1:4317" {
+		t.Fatalf("post-delivery editor receipt = %d %s", afterDelivery.Code, afterDelivery.Body.String())
+	}
+	reusedDelivery := serveGateway(gateway, http.MethodGet, "/wps/document?fileurl="+docPath+"&_wpsHandoff="+handoff)
+	if reusedDelivery.Code != http.StatusNotFound {
+		t.Fatalf("reused editor delivery = %d", reusedDelivery.Code)
+	}
+
+	now = now.Add(2 * time.Minute)
+	expired := serveGateway(gateway, http.MethodGet, "/wps/editor-receipt?handoff="+handoff)
+	if expired.Code != http.StatusNotFound {
+		t.Fatalf("expired editor context = %d", expired.Code)
+	}
+}
+
+func TestGatewayEditorHandoffRejectsUntrustedAndMalformedRegistrations(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "legacy-report.doc")
+	payload := fixture(t, "original.doc")
+	write(t, target, payload)
+	gateway := editorGatewayHandler(t, target, time.Now)
+	valid := map[string]any{
+		"expectedFormat": "doc", "handoff": handoff,
+		"returnURL": "http://127.0.0.1:4317/", "sourcePath": docPath, "title": "Legacy report",
+		"sourceIdentity": map[string]any{
+			"actualFormat": "doc", "byteCount": len(payload),
+			"sha256": fmt.Sprintf("%x", sha256.Sum256(payload)), "sourcePath": docPath,
+		},
+	}
+	for _, test := range []struct {
+		name   string
+		origin string
+		mutate func(map[string]any)
+		status int
+	}{
+		{name: "missing Origin", status: http.StatusForbidden},
+		{name: "OA Origin", origin: "http://127.0.0.1:4317", status: http.StatusForbidden},
+		{name: "wrong return Origin", origin: roadflowgateway.ExtensionOrigin, mutate: func(value map[string]any) { value["returnURL"] = "https://attacker.invalid/" }, status: http.StatusBadRequest},
+		{name: "unknown source", origin: roadflowgateway.ExtensionOrigin, mutate: func(value map[string]any) { value["sourcePath"] = "/UploadFiles/2026/unknown.doc" }, status: http.StatusBadRequest},
+		{name: "wrong identity", origin: roadflowgateway.ExtensionOrigin, mutate: func(value map[string]any) { value["sourceIdentity"].(map[string]any)["sha256"] = "0" }, status: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			copyValue := map[string]any{}
+			encoded, _ := json.Marshal(valid)
+			_ = json.Unmarshal(encoded, &copyValue)
+			if test.mutate != nil {
+				test.mutate(copyValue)
+			}
+			response := registerEditor(t, gateway, copyValue, test.origin)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d: %s", response.Code, test.status, response.Body.String())
+			}
+		})
+	}
+}
 
 func TestCommittedDOCIsDeliveredAndReceiptedThroughAFreshHandoff(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "legacy-report.doc")
@@ -158,6 +290,40 @@ func gatewayHandler(t *testing.T, target string, now func() time.Time) http.Hand
 		t.Fatal(err)
 	}
 	return handler
+}
+
+func editorGatewayHandler(t *testing.T, target string, now func() time.Time) http.Handler {
+	t.Helper()
+	handler, err := roadflowgateway.NewHandler(roadflowgateway.Config{
+		Documents: map[string]string{docPath: target}, ReceiptTTL: 5 * time.Second, Now: now,
+		TrustedOAOrigin: "http://127.0.0.1:4317",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
+}
+
+func registerEditor(t *testing.T, gateway http.Handler, value map[string]any, origin string) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/wps/editor-handoff", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	if origin != "" {
+		request.Header.Set("Origin", origin)
+	}
+	response := httptest.NewRecorder()
+	gateway.ServeHTTP(response, request)
+	return response
+}
+
+func serveGateway(gateway http.Handler, method, target string) *httptest.ResponseRecorder {
+	response := httptest.NewRecorder()
+	gateway.ServeHTTP(response, httptest.NewRequest(method, target, nil))
+	return response
 }
 
 func deliver(t *testing.T, gateway http.Handler, handoffID string) ([]byte, receipt) {

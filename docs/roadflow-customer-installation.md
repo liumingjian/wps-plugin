@@ -1,5 +1,9 @@
 # RoadFlow WPS Editor CRX
 
+For the concise Chinese delivery, simulator, installation, and configuration
+guide, see
+[`roadflow-local-manual-acceptance-zh.md`](roadflow-local-manual-acceptance-zh.md).
+
 This delivery is the browser-hosted RoadFlow route. Install the supplier-signed
 `roadflow-wps-editor-<version>.crx` in the designated Qaxbrowser profile. Its
 fixed extension ID is `bojjhibgkhknccepabkojdjodhhgdjfd`. This is separate
@@ -37,12 +41,14 @@ on other Origins.
 
 The customer-operated WPS Document Gateway must be read-only, byte-preserving,
 and reachable only on the trusted office network. It must not convert, retain,
-or modify the Document. After fully writing and flushing a successful Document
-response, the Gateway records a metadata-only Gateway Delivery Receipt for at most 30
-seconds. The editor reads that receipt from the `delivery-receipt` sibling of
-the configured Gateway path, using the fresh `_wpsHandoff` value and the exact
-decoded source path. Gateway Delivery Receipt lookup must allow the fixed CRX Origin and must
-return a conflict response rather than choosing between duplicate records.
+or modify the Document. The fixed extension registers a short-lived Editor
+Handoff at `POST /wps/editor-handoff`. After fully writing and flushing a
+successful Document response, the Gateway records a metadata-only Gateway
+Delivery Receipt. The OA-Origin Blob editor reads it through
+`GET /wps/editor-receipt`, using the fresh `_wpsHandoff` value. Receipt lookup
+must allow only the configured Trusted OA Origin and must return a conflict
+response rather than choosing between duplicate records. The handoff expires
+after two minutes; delivery receipts remain bounded to at most 30 seconds.
 
 ## Word source validation policy
 

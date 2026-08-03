@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"sync"
@@ -18,23 +19,31 @@ import (
 const (
 	ExtensionOrigin   = "chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd"
 	defaultReceiptTTL = 30 * time.Second
+	defaultEditorTTL  = 2 * time.Minute
+	maxHandoffBytes   = 16 * 1024
 )
 
-var handoffPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var (
+	handoffPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	digestPattern  = regexp.MustCompile(`^[a-f0-9]{64}$`)
+)
 
 // Config binds exact source paths to customer-owned server Documents.
 type Config struct {
-	Documents  map[string]string
-	ReceiptTTL time.Duration
-	Now        func() time.Time
+	Documents       map[string]string
+	ReceiptTTL      time.Duration
+	Now             func() time.Time
+	TrustedOAOrigin string
 }
 
 type handler struct {
-	documents map[string]string
-	ttl       time.Duration
-	now       func() time.Time
-	mu        sync.Mutex
-	receipts  map[string]receiptRecord
+	documents       map[string]string
+	ttl             time.Duration
+	now             func() time.Time
+	mu              sync.Mutex
+	receipts        map[string]receiptRecord
+	trustedOAOrigin string
+	editorSessions  map[string]editorSession
 }
 
 type deliveryReceipt struct {
@@ -49,6 +58,28 @@ type deliveryReceipt struct {
 type receiptRecord struct {
 	receipt  deliveryReceipt
 	conflict bool
+}
+
+type sourceIdentity struct {
+	ActualFormat string `json:"actualFormat"`
+	ByteCount    int    `json:"byteCount"`
+	SHA256       string `json:"sha256"`
+	SourcePath   string `json:"sourcePath"`
+}
+
+type editorHandoffRequest struct {
+	ExpectedFormat string         `json:"expectedFormat"`
+	Handoff        string         `json:"handoff"`
+	ReturnURL      string         `json:"returnURL"`
+	SourceIdentity sourceIdentity `json:"sourceIdentity"`
+	SourcePath     string         `json:"sourcePath"`
+	Title          string         `json:"title"`
+}
+
+type editorSession struct {
+	editorHandoffRequest
+	ExpiresAt time.Time
+	Claimed   bool
 }
 
 // NewHandler creates the fixed read-only Document and receipt endpoints.
@@ -74,18 +105,47 @@ func NewHandler(config Config) (http.Handler, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &handler{documents: documents, ttl: ttl, now: now, receipts: map[string]receiptRecord{}}, nil
+	trustedOAOrigin := ""
+	if config.TrustedOAOrigin != "" {
+		var err error
+		if trustedOAOrigin, err = exactHTTPOrigin(config.TrustedOAOrigin); err != nil {
+			return nil, fmt.Errorf("invalid Gateway TrustedOAOrigin: %w", err)
+		}
+	}
+	return &handler{
+		documents: documents, ttl: ttl, now: now, receipts: map[string]receiptRecord{},
+		trustedOAOrigin: trustedOAOrigin,
+		editorSessions:  map[string]editorSession{},
+	}, nil
 }
 
 func (gateway *handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	switch {
+	case request.Method == http.MethodOptions && request.URL.Path == "/wps/":
+		response.Header().Set("Allow", "GET, OPTIONS")
+		response.WriteHeader(http.StatusNoContent)
 	case request.Method == http.MethodGet && request.URL.Path == "/wps/document":
 		gateway.deliverDocument(response, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/wps/delivery-receipt":
 		gateway.readReceipt(response, request)
+	case request.Method == http.MethodOptions && request.URL.Path == "/wps/editor-handoff":
+		gateway.editorPreflight(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/wps/editor-handoff":
+		gateway.registerEditorHandoff(response, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/wps/editor-receipt":
+		gateway.readEditorReceipt(response, request)
 	default:
 		http.Error(response, "not found", http.StatusNotFound)
 	}
+}
+
+func exactHTTPOrigin(value string) (string, error) {
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("must be one HTTP or HTTPS Origin")
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
 }
 
 func (gateway *handler) deliverDocument(response http.ResponseWriter, request *http.Request) {
@@ -96,6 +156,10 @@ func (gateway *handler) deliverDocument(response http.ResponseWriter, request *h
 		return
 	}
 	sourcePath, handoff := sourcePaths[0], handoffs[0]
+	if !gateway.claimEditorDelivery(handoff, sourcePath) {
+		http.Error(response, "Document not found", http.StatusNotFound)
+		return
+	}
 	target, known := gateway.documents[sourcePath]
 	if !known {
 		http.Error(response, "Document not found", http.StatusNotFound)

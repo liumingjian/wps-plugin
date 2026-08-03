@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoadFlow WPS Editor</title>
+  <link rel="stylesheet" href="/wps/editor.css">
+</head>
+<body>
+  <header>
+    <div class="document-context">
+      <strong id="document-title">RoadFlow Document</strong>
+      <span id="source-label"></span>
+    </div>
+    <span id="editor-status">正在打开正文</span>
+    <div class="editor-actions">
+      <button id="retry-verification" type="button" hidden>返回 OA 重新验证</button>
+      <button id="save-document" type="button" disabled>保存</button>
+      <button id="return-to-oa" type="button" disabled>返回 OA</button>
+    </div>
+  </header>
+  <main id="editor-host"></main>
+  <script src="/wps/editor.js"></script>
+</body>
+</html>

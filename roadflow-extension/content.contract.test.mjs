@@ -18,8 +18,59 @@ let nextIdentityResult = {
 const messages = [];
 const identityRequests = [];
 const alerts = [];
-const docFetches = [];
-let handoffResponse = { ok: true, editorURL: 'chrome-extension://fixed/editor.html?handoff=opaque-id' };
+const assetFetches = [];
+let generatedEditorBlob;
+const hostedHandoff = 'e'.repeat(64);
+const hostedLaunch = {
+  documentURL: `https://gateway.example.test/wps/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&_wpsHandoff=${hostedHandoff}`,
+  expectedFormat: 'docx',
+  handoff: hostedHandoff,
+  officeSaveURL: 'https://oa.example.test/RoadFlow/uploadfiles/OfficeSave?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX',
+  receiptURL: `https://gateway.example.test/wps/editor-receipt?handoff=${hostedHandoff}`,
+  returnURL: 'https://oa.example.test/workflow/current?step=review#document',
+  sourceIdentity: validIdentity,
+  sourcePath: validIdentity.sourcePath,
+  title: 'Quarterly Report'
+};
+let handoffResponse = { ok: true, editorLaunch: hostedLaunch };
+
+class FakeElement {
+  constructor(kind, parsed) {
+    this.kind = kind;
+    this.parsed = parsed;
+    this.textContent = '';
+  }
+
+  replaceWith(element) { this.parsed.style = element; }
+  before(element) { this.parsed.contextScript = element; }
+  removeAttribute() {}
+}
+
+globalThis.DOMParser = class {
+  parseFromString(html, type) {
+    assert.equal(type, 'text/html');
+    assert.match(html, /hosted-editor\.css/);
+    const parsed = {
+      querySelector(selector) {
+        if (selector === 'link[rel="stylesheet"]') return new FakeElement('link', parsed);
+        if (selector === 'script[src]') return parsed.editorScript;
+        return undefined;
+      },
+      createElement(kind) { return new FakeElement(kind, parsed); }
+    };
+    parsed.editorScript = new FakeElement('script', parsed);
+    parsed.documentElement = {
+      get outerHTML() {
+        return `<html><style>${parsed.style.textContent}</style><script>${parsed.contextScript.textContent}</script><script>${parsed.editorScript.textContent}</script></html>`;
+      }
+    };
+    return parsed;
+  }
+};
+URL.createObjectURL = blob => {
+  generatedEditorBlob = blob;
+  return `blob:https://oa.example.test/${hostedHandoff}`;
+};
 
 globalThis.RoadFlowSourceIdentity = {
   async derive(sourceURL, expectedFormat) {
@@ -32,6 +83,7 @@ globalThis.RoadFlowSourceIdentity = {
 
 globalThis.chrome = {
   runtime: {
+    getURL(path) { return `chrome-extension://fixed/${path}`; },
     async sendMessage(message) {
       messages.push(message);
       if (message.type === 'configuration') {
@@ -48,9 +100,12 @@ globalThis.chrome = {
 };
 globalThis.window = {
   addEventListener(type, listener, capture) {
-    assert.equal(type, 'click');
-    assert.equal(capture, false);
-    clickListener = listener;
+    if (type === 'click') {
+      assert.equal(capture, false);
+      clickListener = listener;
+      return;
+    }
+    assert.fail(`unexpected event listener: ${type}`);
   },
   alert(message) { alerts.push(message); }
 };
@@ -60,8 +115,14 @@ globalThis.location = {
   replace(url) { replacementURL = url; }
 };
 globalThis.fetch = async (url, options) => {
-  docFetches.push({ url, options });
-  return { ok: true, status: 200, type: 'basic', redirected: false, url, body: { async cancel() {} } };
+  assetFetches.push({ url, options });
+  const name = String(url).split('/').at(-1);
+  const contents = {
+    'hosted-editor.html': '<html><head><link rel="stylesheet" href="hosted-editor.css"></head><body><script src="hosted-editor.js"></script></body></html>',
+    'hosted-editor.css': '#editor-host { width: 100%; }',
+    'hosted-editor.js': 'globalThis.hostedEditorStarted = true;'
+  };
+  return { ok: name in contents, async text() { return contents[name]; } };
 };
 
 vm.runInThisContext(await readFile(new URL('./content.js', import.meta.url), 'utf8'), { filename: 'content.js' });
@@ -107,9 +168,20 @@ assert.deepEqual(messages, [
     }
   }
 ]);
-assert.equal(replacementURL, 'chrome-extension://fixed/editor.html?handoff=opaque-id');
+assert.equal(replacementURL, `blob:https://oa.example.test/${hostedHandoff}`);
+assert.deepEqual(assetFetches.map(request => request.url), [
+  'chrome-extension://fixed/hosted-editor.html',
+  'chrome-extension://fixed/hosted-editor.css',
+  'chrome-extension://fixed/hosted-editor.js'
+]);
+const generatedHTML = await generatedEditorBlob.text();
+assert.match(generatedHTML, /#editor-host \{ width: 100%; \}/);
+assert.match(generatedHTML, /RoadFlowEditorContext/);
+assert.match(generatedHTML, /hostedEditorStarted = true/);
+assert.doesNotMatch(generatedHTML, /chrome-extension:\/\/fixed\/editor\.html/);
 
 const docMessageCount = messages.length;
+handoffResponse = { ok: true, editorURL: 'chrome-extension://fixed/editor.html?handoff=opaque-id' };
 const validDOCIdentity = {
   sourcePath: '/documents/Legacy.DOC',
   actualFormat: 'doc',
@@ -135,7 +207,7 @@ assert.deepEqual(identityRequests.at(-1), {
   sourceURL: 'https://oa.example.test/documents/Legacy.DOC',
   expectedFormat: 'doc'
 });
-assert.deepEqual(docFetches, []);
+assert.equal(assetFetches.length, 3);
 assert.deepEqual(messages.at(-1), {
   type: 'create-editor-handoff',
   activation: {

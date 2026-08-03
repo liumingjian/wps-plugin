@@ -7,6 +7,7 @@ let localStored = {};
 let sessionStored = {};
 let now = 1_800_000_000_000;
 const extensionOrigin = 'chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd';
+const registrationRequests = [];
 const RealDate = Date;
 globalThis.Date = class extends RealDate {
   static now() { return now; }
@@ -36,13 +37,23 @@ globalThis.chrome = {
   }
 };
 globalThis.importScripts = async () => {};
+globalThis.fetch = async (url, options) => {
+  const payload = JSON.parse(options.body);
+  registrationRequests.push({ url, options, payload });
+  return {
+    ok: true,
+    async json() {
+      return { handoff: payload.handoff };
+    }
+  };
+};
 vm.runInThisContext(await readFile(new URL('./configuration.js', import.meta.url), 'utf8'), { filename: 'configuration.js' });
 vm.runInThisContext(await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8'), { filename: 'source-identity-contract.js' });
 vm.runInThisContext(await readFile(new URL('./service-worker.js', import.meta.url), 'utf8'), { filename: 'service-worker.js' });
 
 const configuration = {
   trustedOrigin: 'https://oa.example.test',
-  gatewayTemplate: 'https://gateway.example.test/wps?fileurl={sourcePath}'
+  gatewayTemplate: 'https://gateway.example.test/wps/document?fileurl={sourcePath}'
 };
 const response = await new Promise(resolve => {
   assert.equal(messageListener(
@@ -88,17 +99,27 @@ async function createHandoff() {
 
 const created = await createHandoff();
 assert.equal(created.ok, true);
-const editorURL = new URL(created.editorURL);
-assert.equal(`${editorURL.protocol}//${editorURL.host}`, extensionOrigin);
-assert.equal(editorURL.pathname, '/editor.html');
-assert.deepEqual([...editorURL.searchParams.keys()], ['handoff']);
-assert.match(editorURL.searchParams.get('handoff'), /^[a-f0-9]{64}$/);
-assert.doesNotMatch(created.editorURL, /oa\.example|documents|Quarterly/i);
+const editorLaunch = created.editorLaunch;
+assert.match(editorLaunch.handoff, /^[a-f0-9]{64}$/);
+assert.equal(new URL(editorLaunch.documentURL).origin, 'https://gateway.example.test');
+assert.equal(new URL(editorLaunch.receiptURL).pathname, '/wps/editor-receipt');
+assert.equal(new URL(editorLaunch.officeSaveURL).origin, 'https://oa.example.test');
+assert.equal(editorLaunch.returnURL, returnURL);
+assert.equal(registrationRequests[0].url, 'https://gateway.example.test/wps/editor-handoff');
+assert.equal(registrationRequests[0].options.method, 'POST');
+assert.deepEqual(registrationRequests[0].payload, {
+  expectedFormat: 'docx',
+  handoff: editorLaunch.handoff,
+  returnURL,
+  sourceIdentity: activation.sourceIdentity,
+  sourcePath: '/documents/Quarterly%20Report.DOCX',
+  title: 'Quarterly Report'
+});
 
 const consume = () => new Promise(resolve => {
   messageListener(
-    { type: 'consume-editor-handoff', handoffID: editorURL.searchParams.get('handoff') },
-    { url: created.editorURL },
+    { type: 'consume-editor-handoff', handoffID: editorLaunch.handoff },
+    { url: `${extensionOrigin}/editor.html?handoff=${editorLaunch.handoff}` },
     resolve
   );
 });
@@ -115,6 +136,7 @@ assert.deepEqual(successful[0].handoff, {
   expectedFormat: 'docx',
   gatewayTemplate: configuration.gatewayTemplate,
   sourceIdentity: activation.sourceIdentity,
+  tabID: 7,
   createdAt: 1_800_000_000_000,
   expiresAt: 1_800_000_120_000
 });
@@ -123,7 +145,7 @@ assert.deepEqual(await consume(), { ok: false });
 const retryCreated = await new Promise(resolve => {
   messageListener(
     { type: 'create-reverification-handoff', previousHandoff: successful[0].handoff },
-    { url: created.editorURL, tab: { id: 7 } },
+    { url: `${extensionOrigin}/editor.html`, tab: { id: 7 } },
     resolve
   );
 });
@@ -135,7 +157,7 @@ const retryClaimed = await new Promise(resolve => {
 });
 assert.equal(retryClaimed.ok, true);
 assert.match(retryClaimed.handoffID, /^[a-f0-9]{64}$/);
-assert.notEqual(retryClaimed.handoffID, editorURL.searchParams.get('handoff'));
+assert.notEqual(retryClaimed.handoffID, editorLaunch.handoff);
 assert.equal(retryClaimed.sourceURL, activation.sourceURL);
 assert.deepEqual(await new Promise(resolve => {
   messageListener({ type: 'claim-reverification' }, { url: returnURL, tab: { id: 7 } }, resolve);
@@ -153,11 +175,11 @@ const retryCompleted = await new Promise(resolve => {
   );
 });
 assert.equal(retryCompleted.ok, true);
-assert.doesNotMatch(retryCompleted.editorURL, /oa\.example|documents|Quarterly/i);
+assert.equal(retryCompleted.editorLaunch.handoff, retryClaimed.handoffID);
 const retryConsumed = await new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: retryClaimed.handoffID },
-    { url: retryCompleted.editorURL },
+    { url: `${extensionOrigin}/editor.html?handoff=${retryClaimed.handoffID}` },
     resolve
   );
 });
@@ -178,7 +200,7 @@ assert.deepEqual(await new Promise(resolve => {
 const invalidRetry = await new Promise(resolve => {
   messageListener(
     { type: 'create-reverification-handoff', previousHandoff: { ...successful[0].handoff, sourcePath: '/documents/Other.docx' } },
-    { url: created.editorURL, tab: { id: 7 } },
+    { url: `${extensionOrigin}/editor.html`, tab: { id: 7 } },
     resolve
   );
 });
@@ -199,9 +221,9 @@ const createdDoc = await new Promise(resolve => {
   messageListener({ type: 'create-editor-handoff', activation: docActivation }, { url: returnURL, tab: { id: 7 } }, resolve);
 });
 assert.equal(createdDoc.ok, true);
-const docHandoffID = new URL(createdDoc.editorURL).searchParams.get('handoff');
+const docHandoffID = createdDoc.editorLaunch.handoff;
 const consumedDoc = await new Promise(resolve => {
-  messageListener({ type: 'consume-editor-handoff', handoffID: docHandoffID }, { url: createdDoc.editorURL }, resolve);
+  messageListener({ type: 'consume-editor-handoff', handoffID: docHandoffID }, { url: `${extensionOrigin}/editor.html?handoff=${docHandoffID}` }, resolve);
 });
 assert.equal(consumedDoc.ok, true);
 assert.equal(consumedDoc.handoff.expectedFormat, 'doc');
@@ -234,7 +256,7 @@ const malformed = await new Promise(resolve => {
 assert.deepEqual(malformed, { ok: false });
 
 const senderProtected = await createHandoff();
-const senderProtectedID = new URL(senderProtected.editorURL).searchParams.get('handoff');
+const senderProtectedID = senderProtected.editorLaunch.handoff;
 const wrongSender = await new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: senderProtectedID },
@@ -246,7 +268,7 @@ assert.deepEqual(wrongSender, { ok: false });
 const rightSender = await new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: senderProtectedID },
-    { url: senderProtected.editorURL },
+    { url: `${extensionOrigin}/editor.html?handoff=${senderProtectedID}` },
     resolve
   );
 });
@@ -256,8 +278,8 @@ const expiring = await createHandoff();
 now += 120_001;
 const expired = await new Promise(resolve => {
   messageListener(
-    { type: 'consume-editor-handoff', handoffID: new URL(expiring.editorURL).searchParams.get('handoff') },
-    { url: expiring.editorURL },
+    { type: 'consume-editor-handoff', handoffID: expiring.editorLaunch.handoff },
+    { url: `${extensionOrigin}/editor.html?handoff=${expiring.editorLaunch.handoff}` },
     resolve
   );
 });

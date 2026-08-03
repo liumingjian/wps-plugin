@@ -78,13 +78,12 @@ The completed local-scope evidence is recorded separately in
 
 Confirm configuration and exercise each behavior against the real Gateway:
 
-1. Receipt lookup accepts only the exact fixed CRX Origin. A missing Origin,
-   OA Origin, another extension Origin, and an Origin suffix/prefix variant
-   each receive a non-success response and no receipt data.
-2. A successful lookup includes
-   `Access-Control-Allow-Origin: chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd`
-   and `Cache-Control: no-store`. No wildcard Origin or credential reflection
-   is allowed.
+1. Editor Handoff registration accepts only the exact fixed CRX Origin. Receipt
+   lookup exposes data only to the exact configured Trusted OA Origin. Missing,
+   unrelated, and Origin suffix/prefix variants receive no receipt data.
+2. A successful receipt lookup includes the exact Trusted OA Origin in
+   `Access-Control-Allow-Origin` and `Cache-Control: no-store`. No wildcard
+   Origin or credential reflection is allowed.
 3. A successful Document response is byte-for-byte equal to the current OA
    source, carries `Cache-Control: no-store`, and is fetched by WPS with the
    exact decoded `sourcePath` plus a fresh `_wpsHandoff` cache identity.
@@ -116,15 +115,16 @@ Repeat all steps once with DOCX and once with DOC.
    plugin, and the WPS `Application` object are available. Capture the browser
    plugin page and the embedded editor state.
 3. Sign in to the real OA and normally click the eligible Document Link. Confirm
-   the activation is intercepted and `editor.html?handoff=<opaque>` replaces the
-   OA page in the same tab. The URL must expose no OA URL, source path, or cookie.
+   the activation is intercepted and an OA-Origin `blob:<oa-origin>/<uuid>` URL
+   replaces the OA page in the same tab. It must expose no source path or cookie.
 4. From OA and Gateway logs, confirm the source read used the authenticated OA
    session while the WPS DAV read used the Gateway URL and fresh handoff. Hash
    both response bodies at their owners and confirm identical format, bytes,
    and SHA-256 without exporting the bodies.
-5. Before the matching receipt is observable, confirm the WPS surface is hidden,
-   Save is disabled, and no OfficeSave request exists. After the receipt and
-   `ActiveDocument` agree, confirm the WPS surface and Save become available.
+5. Before the matching receipt is observable, confirm the mounted WPS surface
+   cannot receive pointer input, Save is disabled, and no OfficeSave request
+   exists. After the receipt and `ActiveDocument` agree, confirm the surface is
+   unlocked and Save becomes available.
 6. Insert a unique non-sensitive marker in WPS and choose **保存**. Confirm one
    authenticated OfficeSave request targets only the original `sourcePath`, the
    OA atomically replaces the original, and its Overwrite Receipt matches path,
