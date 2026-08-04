@@ -105,6 +105,55 @@
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   }
 
+  function supportsRawDeflate() {
+    if (typeof DecompressionStream !== 'function') return false;
+    try {
+      new DecompressionStream('deflate-raw');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Qaxbrowser's Chromium 102 exposes DecompressionStream but rejects deflate-raw.
+  function legacyRawDeflateStream() {
+    if (typeof TransformStream !== 'function' || !globalThis.CFB?.utils?._inflateRaw) return undefined;
+
+    return class LegacyRawDeflateStream extends TransformStream {
+      constructor(format) {
+        if (format !== 'deflate-raw') throw new Error('Unsupported legacy ZIP compression');
+        const chunks = [];
+        super({
+          transform(chunk) {
+            chunks.push(Uint8Array.from(chunk));
+          },
+          flush(controller) {
+            const compressedSize = chunks.reduce((size, chunk) => size + chunk.byteLength, 0);
+            const compressed = new Uint8Array(compressedSize);
+            let offset = 0;
+            for (const chunk of chunks) {
+              compressed.set(chunk, offset);
+              offset += chunk.byteLength;
+            }
+            compressed.l = 0;
+            const expanded = globalThis.CFB.utils._inflateRaw(compressed);
+            if (compressed.l !== compressed.byteLength) throw new Error('Invalid compressed data');
+            controller.enqueue(Uint8Array.from(expanded));
+          }
+        });
+      }
+    };
+  }
+
+  function configureZIP() {
+    const options = { useWebWorkers: false };
+    if (!supportsRawDeflate()) {
+      const fallback = legacyRawDeflateStream();
+      if (fallback) options.DecompressionStreamZlib = fallback;
+    }
+    zip.configure(options);
+  }
+
   async function readBoundedSource(response) {
     if (!response.body?.getReader) throw new Error('Source body unavailable');
     const reader = response.body.getReader();
@@ -170,7 +219,7 @@
   }
 
   async function validateDOCX(bytes) {
-    zip.configure({ useWebWorkers: false });
+    configureZIP();
     const reader = new zip.ZipReader(new zip.Uint8ArrayReader(bytes));
     try {
       const entries = await reader.getEntries();
