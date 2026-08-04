@@ -31,20 +31,26 @@ form.addEventListener('submit', async event => {
       message.textContent = 'Origin access was not granted. Configuration was not changed.';
       return;
     }
-    const response = await chrome.runtime.sendMessage({ type: 'apply-configuration', configuration: result.value });
-    if (!response?.ok) {
-      const retained = savedConfiguration ? RoadFlowConfiguration.permissionPatterns(savedConfiguration) : [];
-      await chrome.permissions.remove({ origins: requestedPatterns.filter(pattern => !retained.includes(pattern)) });
-      message.textContent = response?.message || 'Configuration could not be applied.';
+    const stillGranted = await chrome.permissions.contains({ origins: requestedPatterns });
+    if (!stillGranted) {
+      message.textContent = 'Origin access was not granted. Configuration was not changed.';
       return;
     }
+
+    // The options page is already an extension-owned, user-initiated boundary.
+    // Persist directly after the browser confirms the requested Origin so a
+    // sleeping or stale Service Worker cannot make setup fail.
+    await chrome.storage.local.set({ [RoadFlowConfiguration.STORAGE_KEY]: result.value });
     if (savedConfiguration) {
       const active = RoadFlowConfiguration.permissionPatterns(result.value);
       const obsolete = RoadFlowConfiguration.permissionPatterns(savedConfiguration)
         .filter(pattern => !active.includes(pattern));
-      if (obsolete.length > 0) await chrome.permissions.remove({ origins: obsolete });
+      if (obsolete.length > 0) {
+        try { await chrome.permissions.remove({ origins: obsolete }); } catch {}
+      }
     }
-  } catch {
+  } catch (error) {
+    console.error('RoadFlow configuration could not be applied:', error);
     message.textContent = 'Configuration could not be applied. Check browser extension permissions and try again.';
     return;
   }
