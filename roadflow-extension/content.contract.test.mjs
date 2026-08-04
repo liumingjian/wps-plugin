@@ -305,9 +305,43 @@ assert.deepEqual(alerts, [
   'Document verification failed. Editing was not opened.'
 ]);
 
+handoffResponse = { ok: true, editorLaunch: hostedLaunch };
+nextIdentityResult = { ok: true, identity: validIdentity };
 storageListener({
   roadFlowIntegration: {
     oldValue: { trustedOrigin: 'https://oa.example.test' },
+    newValue: { trustedOrigin: '' }
+  }
+}, 'local');
+let allOriginsPrevented = false;
+const allOriginsMessageCount = messages.length;
+clickListener({
+  isTrusted: true,
+  button: 0,
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+  defaultPrevented: false,
+  preventDefault() { allOriginsPrevented = true; },
+  target: {
+    closest() {
+      return { href: 'https://files.example.test/documents/External.DOCX', textContent: 'External Document' };
+    }
+  }
+});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(allOriginsPrevented, true);
+assert.equal(messages.length, allOriginsMessageCount + 1);
+assert.equal(messages.at(-1).activation.sourceURL, 'https://files.example.test/documents/External.DOCX');
+assert.deepEqual(identityRequests.at(-1), {
+  sourceURL: 'https://files.example.test/documents/External.DOCX',
+  expectedFormat: 'docx'
+});
+
+storageListener({
+  roadFlowIntegration: {
+    oldValue: { trustedOrigin: '' },
     newValue: { trustedOrigin: 'https://new-oa.example.test' }
   }
 }, 'local');

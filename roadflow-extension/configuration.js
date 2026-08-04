@@ -1,6 +1,7 @@
 'use strict';
 
 const STORAGE_KEY = 'roadFlowIntegration';
+const ALL_ORIGIN_PATTERNS = Object.freeze(['http://*/*', 'https://*/*']);
 
 function failure(message) {
   return Object.freeze({ ok: false, message });
@@ -22,10 +23,24 @@ function originPattern(origin) {
 }
 
 function permissionPatterns(configuration) {
-  return [originPattern(configuration.trustedOrigin)];
+  return configuration?.trustedOrigin ? [originPattern(configuration.trustedOrigin)] : [...ALL_ORIGIN_PATTERNS];
+}
+
+function trustsOrigin(configuration, candidateOrigin) {
+  if (!configuration || typeof configuration.trustedOrigin !== 'string') return false;
+  let parsed;
+  try { parsed = new URL(candidateOrigin); } catch { return false; }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+  return !configuration.trustedOrigin || parsed.origin === configuration.trustedOrigin;
 }
 
 function validate(input) {
+  if (input?.trustedOrigin === undefined || input.trustedOrigin === '') {
+    return Object.freeze({
+      ok: true,
+      value: Object.freeze({ trustedOrigin: '' })
+    });
+  }
   const originURL = parseHTTPURL(input?.trustedOrigin);
   if (!originURL || originURL.pathname !== '/' || originURL.search || originURL.hash) {
     return failure('Trusted OA Origin must be one HTTP or HTTPS Origin without a path, credentials, query, or fragment.');
@@ -40,5 +55,5 @@ function validate(input) {
 }
 
 globalThis.RoadFlowConfiguration = Object.freeze({
-  STORAGE_KEY, originPattern, permissionPatterns, validate
+  STORAGE_KEY, ALL_ORIGIN_PATTERNS, originPattern, permissionPatterns, trustsOrigin, validate
 });

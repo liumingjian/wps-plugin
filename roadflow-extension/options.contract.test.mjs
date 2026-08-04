@@ -6,6 +6,7 @@ const source = await readFile(new URL('./options.js', import.meta.url), 'utf8');
 const configuration = await readFile(new URL('./configuration.js', import.meta.url), 'utf8');
 let submit;
 let stored;
+const requestedOrigins = [];
 const input = { value: 'http://127.0.0.1:3000' };
 const message = { textContent: '' };
 const form = {
@@ -16,7 +17,7 @@ const form = {
 };
 const chrome = {
   permissions: {
-    async request() { return true; },
+    async request({ origins }) { requestedOrigins.push(origins); return true; },
     async contains() { return true; },
     async remove() {}
   },
@@ -52,4 +53,12 @@ await submit({ preventDefault() {} });
 assert.deepEqual(JSON.parse(JSON.stringify(stored)), {
   roadFlowIntegration: { trustedOrigin: 'http://127.0.0.1:3000' }
 });
+assert.equal(message.textContent, 'Configuration saved for this browser profile.');
+
+input.value = '';
+await submit({ preventDefault() {} });
+assert.deepEqual(JSON.parse(JSON.stringify(stored)), {
+  roadFlowIntegration: { trustedOrigin: '' }
+});
+assert.deepEqual(JSON.parse(JSON.stringify(requestedOrigins.at(-1))), ['http://*/*', 'https://*/*']);
 assert.equal(message.textContent, 'Configuration saved for this browser profile.');
