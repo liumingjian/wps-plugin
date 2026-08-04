@@ -17,9 +17,25 @@ assert.deepEqual(validate({
 assert.deepEqual(RoadFlowConfiguration.permissionPatterns({
   trustedOrigin: 'https://oa.example.test'
 }), ['https://oa.example.test/*']);
+assert.deepEqual(validate({ trustedOrigin: '' }), {
+  ok: true,
+  value: { trustedOrigin: '' }
+});
+assert.deepEqual(validate(undefined), {
+  ok: true,
+  value: { trustedOrigin: '' }
+});
+assert.deepEqual(RoadFlowConfiguration.permissionPatterns({ trustedOrigin: '' }), [
+  'http://*/*',
+  'https://*/*'
+]);
+assert.equal(RoadFlowConfiguration.trustsOrigin({ trustedOrigin: '' }, 'http://oa.example.test'), true);
+assert.equal(RoadFlowConfiguration.trustsOrigin({ trustedOrigin: '' }, 'https://files.example.test'), true);
+assert.equal(RoadFlowConfiguration.trustsOrigin({ trustedOrigin: '' }, 'file:///tmp/report.docx'), false);
+assert.equal(RoadFlowConfiguration.trustsOrigin({ trustedOrigin: 'https://oa.example.test' }, 'https://oa.example.test'), true);
+assert.equal(RoadFlowConfiguration.trustsOrigin({ trustedOrigin: 'https://oa.example.test' }, 'https://files.example.test'), false);
 
 for (const input of [
-  { trustedOrigin: '' },
   { trustedOrigin: 'https://oa.example.test/path' },
   { trustedOrigin: 'https://alice:secret@oa.example.test' },
   { trustedOrigin: 'file:///oa' }

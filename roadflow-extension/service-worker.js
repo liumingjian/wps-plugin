@@ -19,7 +19,9 @@ function senderOrigin(sender) {
 
 async function configurationFor(sender) {
   const configuration = await configuredIntegration();
-  if (!configuration || !sender?.tab || senderOrigin(sender) !== configuration.trustedOrigin) return { ok: false };
+  if (!configuration || !sender?.tab || !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender))) {
+    return { ok: false };
+  }
   return { ok: true, configuration };
 }
 
@@ -45,12 +47,13 @@ function editorLaunch(handoff, context) {
 async function createEditorHandoff(activation, sender) {
   const configuration = await configuredIntegration();
   if (!configuration || !sender?.tab || sender.url !== activation?.returnURL ||
-      senderOrigin(sender) !== configuration.trustedOrigin) return { ok: false };
+      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender))) return { ok: false };
 
   let source;
   try { source = new URL(activation.sourceURL); } catch { return { ok: false }; }
   const sourcePath = RoadFlowSourceIdentityContract.sourcePath(source);
-  if (!sourcePath || source.origin !== configuration.trustedOrigin || !/\.docx?$/i.test(sourcePath)) {
+  if (!sourcePath || !RoadFlowConfiguration.trustsOrigin(configuration, source.origin) ||
+      !/^https?:$/.test(source.protocol) || !/\.docx?$/i.test(sourcePath)) {
     return { ok: false };
   }
   const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
@@ -58,6 +61,9 @@ async function createEditorHandoff(activation, sender) {
     activation.sourceIdentity, sourcePath, expectedFormat
   );
   if (!sourceIdentity) return { ok: false };
+
+  // In all-origin mode the OA page remains the owner of its OfficeSave endpoint.
+  const trustedOrigin = configuration.trustedOrigin || senderOrigin(sender);
 
   const encodedFilename = source.pathname.slice(source.pathname.lastIndexOf('/') + 1);
   let filename = encodedFilename;
@@ -70,7 +76,7 @@ async function createEditorHandoff(activation, sender) {
     ok: true,
     editorLaunch: editorLaunch(handoff, {
       returnURL: sender.url,
-      trustedOrigin: configuration.trustedOrigin,
+      trustedOrigin,
       sourceURL: source.href,
       sourcePath,
       title,

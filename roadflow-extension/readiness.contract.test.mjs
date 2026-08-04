@@ -9,7 +9,7 @@ const validConfiguration = {
   trustedOrigin: 'https://oa.example.test'
 };
 const cases = [
-  [{}, { npapiAvailable: true }, 'missing-configuration', 'Open extension settings'],
+  [{}, { npapiAvailable: true }, 'ready', 'all HTTP/HTTPS Word links'],
   [validConfiguration, { npapiAvailable: false }, 'wps-npapi-unavailable', 'Verify the designated WPS installation'],
   [validConfiguration, { npapiAvailable: true }, 'ready', 'ready for RoadFlow']
 ];

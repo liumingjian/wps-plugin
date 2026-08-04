@@ -24,11 +24,15 @@ http://127.0.0.1:4317
 bojjhibgkhknccepabkojdjodhhgdjfd
 ```
 
-扩展设置中只填写：
+扩展设置中可以填写指定 OA：
 
 ```text
 Trusted OA Origin: http://127.0.0.1:4317
 ```
+
+也可以保持 `Trusted OA Origin` 为空并保存，此时扩展会请求全部 HTTP/HTTPS
+站点权限，并拦截浏览器中所有路径以 `.doc` 或 `.docx` 结尾的 Word 链接。
+客户环境建议填写实际 OA Origin，避免扩大拦截范围。
 
 不再配置 Gateway template。
 

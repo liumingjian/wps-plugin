@@ -18,7 +18,10 @@ globalThis.chrome = {
   },
   permissions: {
     async contains({ origins }) {
-      return JSON.stringify(origins) === JSON.stringify(['http://ywsh.yn.srrc.org.cn/*']);
+      return [
+        ['http://ywsh.yn.srrc.org.cn/*'],
+        ['http://*/*', 'https://*/*']
+      ].some(granted => JSON.stringify(origins) === JSON.stringify(granted));
     }
   }
 };
@@ -90,6 +93,45 @@ for (const invalid of [
   });
   assert.deepEqual(rejected, { ok: false });
 }
+
+const allOriginsConfiguration = { trustedOrigin: '' };
+const allOriginsResponse = await new Promise(resolve => {
+  assert.equal(messageListener(
+    { type: 'apply-configuration', configuration: allOriginsConfiguration },
+    { url: `${extensionOrigin}/options.html` },
+    resolve
+  ), true);
+});
+assert.deepEqual(allOriginsResponse, { ok: true, configuration: allOriginsConfiguration });
+assert.deepEqual(localStored, { roadFlowIntegration: allOriginsConfiguration });
+
+const externalReturnURL = 'http://other-oa.example.test/workflow/current';
+const externalSourceURL = 'https://files.example.test/documents/External.DOCX';
+const externalSourcePath = '/documents/External.DOCX';
+const externalActivation = {
+  returnURL: externalReturnURL,
+  sourceURL: externalSourceURL,
+  title: 'External Document',
+  sourceIdentity: {
+    sourcePath: externalSourcePath,
+    actualFormat: 'docx',
+    byteCount: 4096,
+    sha256: 'b'.repeat(64)
+  }
+};
+const allOriginsConfigurationResponse = await new Promise(resolve => {
+  messageListener({ type: 'configuration' }, { url: externalReturnURL, tab: { id: 8 } }, resolve);
+});
+assert.deepEqual(allOriginsConfigurationResponse, { ok: true, configuration: allOriginsConfiguration });
+const externalCreated = await new Promise(resolve => {
+  messageListener({ type: 'create-editor-handoff', activation: externalActivation }, {
+    url: externalReturnURL,
+    tab: { id: 8 }
+  }, resolve);
+});
+assert.equal(externalCreated.ok, true);
+assert.equal(new URL(externalCreated.editorLaunch.officeSaveURL).origin, 'http://other-oa.example.test');
+assert.equal(new URL(externalCreated.editorLaunch.officeSaveURL).searchParams.get('fileurl'), externalSourcePath);
 
 const unauthorizedConfiguration = await new Promise(resolve => {
   messageListener(

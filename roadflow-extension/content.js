@@ -4,6 +4,16 @@ let configuration;
 const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
 const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
 
+function trustedOriginMatches(origin, candidateConfiguration = configuration) {
+  if (!candidateConfiguration || typeof origin !== 'string') return false;
+  if (candidateConfiguration.trustedOrigin) return origin === candidateConfiguration.trustedOrigin;
+  try {
+    return ['http:', 'https:'].includes(new URL(origin).protocol);
+  } catch {
+    return false;
+  }
+}
+
 async function packagedText(name) {
   const response = await fetch(chrome.runtime.getURL(name));
   if (!response.ok) throw new Error(`Packaged editor asset is unavailable: ${name}`);
@@ -47,7 +57,10 @@ chrome.runtime.sendMessage({ type: 'configuration' }).then(response => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.roadFlowIntegration) return;
   const trustedOrigin = changes.roadFlowIntegration.newValue?.trustedOrigin;
-  configuration = trustedOrigin === location.origin ? { trustedOrigin } : undefined;
+  const nextConfiguration = { trustedOrigin };
+  configuration = typeof trustedOrigin === 'string' && trustedOriginMatches(location.origin, nextConfiguration)
+    ? nextConfiguration
+    : undefined;
 });
 
 async function enterPackagedEditor(source, title) {
@@ -87,8 +100,8 @@ window.addEventListener('click', event => {
   } catch {
     return;
   }
-  if (location.origin !== configuration.trustedOrigin ||
-      source.origin !== configuration.trustedOrigin ||
+  if (!trustedOriginMatches(location.origin) ||
+      !trustedOriginMatches(source.origin) ||
       !/^https?:$/.test(source.protocol) ||
       !/\.docx?$/i.test(source.pathname)) return;
 

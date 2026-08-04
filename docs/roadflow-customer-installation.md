@@ -20,18 +20,24 @@ Native Messaging host, local agent, or OA source-code change is required.
 Install the signed `roadflow-wps-editor-<version>.crx`. Confirm that its fixed
 extension ID is `bojjhibgkhknccepabkojdjodhhgdjfd`.
 
-Open extension settings and enter only the exact **Trusted OA Origin**. It must
-contain the scheme, host, and optional port without a path, query, credentials,
-or fragment. Example:
+Open extension settings and enter the exact **Trusted OA Origin**, or leave it
+blank to enable all-origin mode. In scoped mode it must contain the scheme,
+host, and optional port without a path, query, credentials, or fragment.
+Example:
 
 ```text
 http://ywsh.yn.srrc.org.cn
 ```
 
-Saving requests permission only for that Origin. The readiness states are
+Saving a blank value requests HTTP/HTTPS permissions for all origins; saving an
+Origin requests permission only for that Origin. The readiness states are
 **Configuration required**, **WPS or browser plugin unavailable**, and
 **Environment ready**. The last state is required before testing a Document
 link.
+
+All-origin mode intercepts every HTTP/HTTPS `.doc` and `.docx` link visible to
+the browser extension. For production, prefer the exact OA Origin when the
+customer host is known.
 
 ## Direct editing route
 
@@ -43,11 +49,13 @@ http://ywsh.yn.srrc.org.cn/Attachment/UploadFiles/202608/03//测试文档2026080
 
 the extension:
 
-1. intercepts the same-Origin click instead of allowing the download;
+1. intercepts the click instead of allowing the download (same-Origin in
+   scoped mode, any HTTP/HTTPS source in all-origin mode);
 2. reads and validates the DOC or DOCX within the authenticated OA page;
 3. opens the original OA URL directly in WPS;
 4. enables and displays revision tracking before editing is unlocked;
-5. saves to the existing same-Origin OfficeSave endpoint.
+5. saves to the existing OfficeSave endpoint on the configured Origin, or on
+   the document source Origin in all-origin mode.
 
 The logical `fileurl` is decoded exactly once. Customer path structure,
 including repeated slashes, is preserved when OfficeSave is called.

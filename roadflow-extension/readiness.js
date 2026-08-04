@@ -1,7 +1,8 @@
 'use strict';
 
 function evaluate(configuration, environment) {
-  if (!RoadFlowConfiguration.validate(configuration).ok) {
+  const validation = RoadFlowConfiguration.validate(configuration);
+  if (!validation.ok) {
     return Object.freeze({
       state: 'missing-configuration',
       title: 'Configuration required',
@@ -18,7 +19,9 @@ function evaluate(configuration, environment) {
   return Object.freeze({
     state: 'ready',
     title: 'Environment ready',
-    guidance: 'This browser profile is ready for RoadFlow Document editing.'
+    guidance: validation.value.trustedOrigin
+      ? 'This browser profile is ready for RoadFlow Document editing.'
+      : 'All HTTP/HTTPS Word links are enabled for RoadFlow Document editing.'
   });
 }
 
