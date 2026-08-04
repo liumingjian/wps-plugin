@@ -133,6 +133,19 @@ assert.deepEqual(fetches, [{
   options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
 }]);
 
+const nativeDecompressionStream = globalThis.DecompressionStream;
+class UnsupportedRawDeflateStream {
+  constructor(format) {
+    if (format === 'deflate-raw') throw new TypeError('Unsupported compression format: deflate-raw');
+  }
+}
+globalThis.DecompressionStream = UnsupportedRawDeflateStream;
+zip.configure({ DecompressionStream: UnsupportedRawDeflateStream });
+nextResponse = sourceResponse(sourceBytes);
+assert.equal((await RoadFlowSourceIdentity.derive(sourceURL, 'docx')).ok, true);
+globalThis.DecompressionStream = nativeDecompressionStream;
+zip.configure({ DecompressionStream: nativeDecompressionStream });
+
 const failure = { ok: false, message: 'Document verification failed. Editing was not opened.' };
 const docURL = 'https://oa.example.test/documents/Legacy.DOC';
 const docBytes = doc();
