@@ -47,7 +47,16 @@ if (typeof document !== 'undefined') {
   const settings = document.querySelector('#open-settings');
   const probe = document.createElement('object');
   probe.type = 'application/x-wps';
-  probe.hidden = true;
+  // NPAPI objects do not initialize when hidden. Keep the probe rendered but
+  // outside the viewport so Qaxbrowser can expose the WPS Application object.
+  probe.style.position = 'fixed';
+  probe.style.left = '-10000px';
+  probe.style.top = '-10000px';
+  probe.style.width = '1px';
+  probe.style.height = '1px';
+  probe.style.opacity = '0';
+  probe.style.pointerEvents = 'none';
+  probe.setAttribute('aria-hidden', 'true');
   document.body.append(probe);
 
   chrome.storage.local.get(RoadFlowConfiguration.STORAGE_KEY).then(async stored => {
