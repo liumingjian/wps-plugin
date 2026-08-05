@@ -8,6 +8,10 @@ vm.runInThisContext(await readFile(new URL('./readiness.js', import.meta.url), '
 const validConfiguration = {
   trustedOrigin: 'https://oa.example.test'
 };
+const readinessSource = await readFile(new URL('./readiness.js', import.meta.url), 'utf8');
+assert.doesNotMatch(readinessSource, /probe\.hidden\s*=\s*true/);
+assert.match(readinessSource, /probe\.style\.width\s*=\s*'1px'/);
+assert.match(readinessSource, /probe\.style\.left\s*=\s*'-10000px'/);
 const cases = [
   [{}, { npapiAvailable: true }, 'ready', 'all HTTP/HTTPS Word links'],
   [validConfiguration, { npapiAvailable: false }, 'wps-npapi-unavailable', 'Verify the designated WPS installation'],
