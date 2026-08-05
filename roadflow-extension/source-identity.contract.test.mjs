@@ -133,6 +133,20 @@ assert.deepEqual(fetches, [{
   options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
 }]);
 
+const nativeCrypto = globalThis.crypto;
+Object.defineProperty(globalThis, 'crypto', { configurable: true, writable: true, value: {} });
+nextResponse = sourceResponse(sourceBytes);
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Quarterly Report.DOCX',
+    actualFormat: 'docx',
+    byteCount: sourceBytes.byteLength,
+    sha256: createHash('sha256').update(sourceBytes).digest('hex')
+  }
+});
+Object.defineProperty(globalThis, 'crypto', { configurable: true, writable: true, value: nativeCrypto });
+
 const nativeDecompressionStream = globalThis.DecompressionStream;
 class UnsupportedRawDeflateStream {
   constructor(format) {
