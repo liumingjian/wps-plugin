@@ -1,6 +1,30 @@
 'use strict';
 
 (() => {
+  const DEBUG_PREFIX = '[RoadFlow WPS debug]';
+
+  function debugURL(value) {
+    try {
+      const parsed = value instanceof URL ? value : new URL(String(value));
+      if (parsed.protocol === 'blob:') return `blob:${parsed.pathname}`;
+      return `${parsed.origin}${parsed.pathname}${parsed.search ? '?[redacted]' : ''}${parsed.hash ? '#[redacted]' : ''}`;
+    } catch {
+      return typeof value === 'string' ? value : undefined;
+    }
+  }
+
+  function debugError(error) {
+    if (error instanceof Error) {
+      return { name: error.name, message: error.message, stack: error.stack };
+    }
+    return { message: String(error) };
+  }
+
+  function debug(event, details = {}) {
+    if (!globalThis.chrome?.runtime?.id || typeof globalThis.console?.info !== 'function') return;
+    console.info(`${DEBUG_PREFIX} ${event}`, details);
+  }
+
   const CONTENT_TYPES_NAMESPACE = 'http://schemas.openxmlformats.org/package/2006/content-types';
   const RELATIONSHIPS_NAMESPACE = 'http://schemas.openxmlformats.org/package/2006/relationships';
   const WORD_NAMESPACES = [
@@ -337,47 +361,91 @@
     const subtle = globalThis.crypto?.subtle;
     if (typeof subtle?.digest === 'function') {
       try {
-        return new Uint8Array(await subtle.digest('SHA-256', bytes));
-      } catch {}
+        const digest = new Uint8Array(await subtle.digest('SHA-256', bytes));
+        debug('source-hash-complete', { method: 'crypto.subtle', byteCount: bytes.byteLength });
+        return digest;
+      } catch (error) {
+        debug('source-hash-native-failed', { error: debugError(error) });
+      }
     }
-    return sha256Fallback(bytes);
+    const digest = sha256Fallback(bytes);
+    debug('source-hash-complete', { method: 'javascript-fallback', byteCount: bytes.byteLength });
+    return digest;
   }
 
   async function derive(sourceURL, expectedFormat) {
+    debug('source-validation-start', {
+      sourceURL: debugURL(sourceURL),
+      expectedFormat
+    });
     try {
       const source = new URL(sourceURL);
       if (!['doc', 'docx'].includes(expectedFormat) ||
           !new RegExp(`\\.${expectedFormat}$`, 'i').test(source.pathname)) throw new Error('Format mismatch');
       const requestURL = new URL(source.href);
       requestURL.hash = '';
+      debug('source-fetch-start', {
+        sourceURL: debugURL(source),
+        requestURL: debugURL(requestURL),
+        credentials: 'include',
+        cache: 'no-store',
+        redirect: 'manual'
+      });
       const response = await fetch(requestURL.href, {
         cache: 'no-store',
         credentials: 'include',
         redirect: 'manual'
+      });
+      debug('source-fetch-response', {
+        requestURL: debugURL(requestURL),
+        ok: response.ok,
+        status: response.status,
+        type: response.type,
+        redirected: response.redirected,
+        responseURL: debugURL(response.url)
       });
       if (!response.ok || response.redirected || response.type === 'opaqueredirect' || response.url !== requestURL.href) {
         throw new Error('Source response rejected');
       }
 
       const declaredSize = response.headers.get('Content-Length');
+      debug('source-response-metadata', {
+        contentLength: declaredSize,
+        compressedLimit: LIMITS.compressedBytes
+      });
       if (declaredSize !== null && (!/^\d+$/.test(declaredSize) || Number(declaredSize) > LIMITS.compressedBytes)) {
         throw new Error('Compressed size limit exceeded');
       }
       const bytes = await readBoundedSource(response);
+      debug('source-bytes-read', { byteCount: bytes.byteLength });
       if (expectedFormat === 'docx') await validateDOCX(bytes);
       else validateDOC(bytes);
+      debug('source-structure-valid', { sourcePath: RoadFlowSourceIdentityContract.sourcePath(source), expectedFormat });
 
       const digest = await sha256Digest(bytes);
+      const identity = {
+        sourcePath: RoadFlowSourceIdentityContract.sourcePath(source),
+        actualFormat: expectedFormat,
+        byteCount: bytes.byteLength,
+        sha256: Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
+      };
+      debug('source-validation-succeeded', {
+        sourceURL: debugURL(source),
+        sourcePath: identity.sourcePath,
+        actualFormat: identity.actualFormat,
+        byteCount: identity.byteCount,
+        sha256: identity.sha256
+      });
       return {
         ok: true,
-        identity: {
-          sourcePath: RoadFlowSourceIdentityContract.sourcePath(source),
-          actualFormat: expectedFormat,
-          byteCount: bytes.byteLength,
-          sha256: Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
-        }
+        identity
       };
     } catch (error) {
+      debug('source-validation-failed', {
+        sourceURL: debugURL(sourceURL),
+        expectedFormat,
+        error: debugError(error)
+      });
       if (globalThis.chrome?.runtime?.id) console.error('RoadFlow source validation failed:', error);
       return { ok: false, message: FAILURE_MESSAGE };
     }

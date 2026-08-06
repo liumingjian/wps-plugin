@@ -19,6 +19,7 @@ const messages = [];
 const identityRequests = [];
 const alerts = [];
 const assetFetches = [];
+const debugLogs = [];
 let generatedEditorBlob;
 const hostedHandoff = 'e'.repeat(64);
 const hostedLaunch = {
@@ -82,6 +83,8 @@ globalThis.RoadFlowSourceIdentity = {
 
 globalThis.chrome = {
   runtime: {
+    id: 'fixed',
+    getManifest() { return { version: 'test' }; },
     getURL(path) { return `chrome-extension://fixed/${path}`; },
     async sendMessage(message) {
       messages.push(message);
@@ -96,6 +99,8 @@ globalThis.chrome = {
     onChanged: { addListener(listener) { storageListener = listener; } }
   }
 };
+const originalConsoleInfo = console.info;
+console.info = (...args) => debugLogs.push(args);
 globalThis.window = {
   addEventListener(type, listener, capture) {
     if (type === 'click') {
@@ -176,6 +181,14 @@ assert.match(generatedHTML, /#editor-host \{ width: 100%; \}/);
 assert.match(generatedHTML, /RoadFlowEditorContext/);
 assert.match(generatedHTML, /hostedEditorStarted = true/);
 assert.doesNotMatch(generatedHTML, /chrome-extension:\/\/fixed\/editor\.html/);
+
+const debugEvents = () => debugLogs.map(([message]) => message);
+assert.ok(debugEvents().includes('[RoadFlow WPS debug] content-script-loaded'));
+assert.ok(debugEvents().includes('[RoadFlow WPS debug] configuration-received'));
+assert.ok(debugEvents().includes('[RoadFlow WPS debug] document-link-click-observed'));
+assert.ok(debugEvents().includes('[RoadFlow WPS debug] document-link-intercepted'));
+assert.ok(debugEvents().includes('[RoadFlow WPS debug] document-verification-succeeded'));
+assert.ok(debugEvents().includes('[RoadFlow WPS debug] editor-handoff-response'));
 
 const docMessageCount = messages.length;
 const validDOCIdentity = {
@@ -361,3 +374,10 @@ clickListener({
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(staleConfigurationPrevented, false);
 assert.equal(messages.length, messageCount);
+assert.ok(debugLogs.some(([message, details]) =>
+  message === '[RoadFlow WPS debug] document-link-skipped' &&
+  details.reasons.includes('source-origin-not-trusted')));
+assert.ok(debugLogs.some(([message, details]) =>
+  message === '[RoadFlow WPS debug] document-link-skipped' &&
+  details.reasons.includes('unsupported-extension')));
+console.info = originalConsoleInfo;
