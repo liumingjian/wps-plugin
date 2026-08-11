@@ -36,9 +36,11 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 			ServiceWorker string `json:"service_worker"`
 		} `json:"background"`
 		ContentScripts []struct {
-			Matches []string `json:"matches"`
-			JS      []string `json:"js"`
-			RunAt   string   `json:"run_at"`
+			Matches         []string `json:"matches"`
+			JS              []string `json:"js"`
+			RunAt           string   `json:"run_at"`
+			AllFrames       bool     `json:"all_frames"`
+			MatchAboutBlank bool     `json:"match_about_blank"`
 		} `json:"content_scripts"`
 		WebAccessibleResources []struct {
 			Resources []string `json:"resources"`
@@ -62,10 +64,11 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		t.Fatalf("RoadFlow packaged entry points = %+v", manifest)
 	}
 	if len(manifest.ContentScripts) != 1 || strings.Join(manifest.ContentScripts[0].Matches, ",") != "http://*/*,https://*/*" ||
-		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,cfb.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
+		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,cfb.min.js,format-capabilities.js,source-identity-contract.js,source-identity.js,content.js" ||
+		manifest.ContentScripts[0].RunAt != "document_start" || !manifest.ContentScripts[0].AllFrames || !manifest.ContentScripts[0].MatchAboutBlank {
 		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
 	}
-	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "hosted-editor.html,hosted-editor.css,hosted-editor.js" ||
+	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "format-capabilities.js,hosted-editor.html,hosted-editor.css,hosted-editor.js" ||
 		strings.Join(manifest.WebAccessibleResources[0].Matches, ",") != "http://*/*,https://*/*" {
 		t.Fatalf("RoadFlow editor navigation resources = %+v", manifest.WebAccessibleResources)
 	}
@@ -74,7 +77,7 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 		"configuration.js", "content.js",
 		"hosted-editor.css", "hosted-editor.html", "hosted-editor.js",
 		"icon.png", "options.css", "options.html", "options.js", "readiness.html",
-		"readiness.js", "service-worker.js", "source-identity-contract.js", "source-identity.js",
+		"readiness.js", "service-worker.js", "format-capabilities.js", "source-identity-contract.js", "source-identity.js",
 		"zip-core.min.js", "zip-js.LICENSE", "cfb.min.js", "cfb.LICENSE",
 	} {
 		if _, err := os.Stat(filepath.Join(extensionRoot, name)); err != nil {

@@ -20,7 +20,7 @@ if [[ -e "$output" ]]; then
 fi
 
 mkdir -p "$output"
-for file in cfb.LICENSE cfb.min.js configuration.js content.js hosted-editor.css hosted-editor.html hosted-editor.js options.css options.html options.js readiness.html readiness.js service-worker.js source-identity-contract.js source-identity.js zip-core.min.js zip-js.LICENSE; do
+for file in cfb.LICENSE cfb.min.js configuration.js content.js format-capabilities.js hosted-editor.css hosted-editor.html hosted-editor.js options.css options.html options.js readiness.html readiness.js service-worker.js source-identity-contract.js source-identity.js zip-core.min.js zip-js.LICENSE; do
   install -m 0644 "$repo/roadflow-extension/$file" "$output/$file"
 done
 sed -E "s/\"version\": \"[^\"]+\"/\"version\": \"$version\"/" "$repo/roadflow-extension/manifest.json" >"$output/manifest.json"

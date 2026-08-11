@@ -1,6 +1,7 @@
 package roadflowgateway_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/md5"
 	"crypto/sha256"
@@ -22,8 +23,10 @@ import (
 )
 
 const (
-	docPath = "/UploadFiles/2026/legacy-report.doc"
-	handoff = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	docPath            = "/UploadFiles/2026/legacy-report.doc"
+	spreadsheetPath    = "/UploadFiles/2026/quarterly-report.xlsx"
+	handoff            = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	spreadsheetHandoff = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 )
 
 func TestWPSDAVPreflightAllowsDocumentDelivery(t *testing.T) {
@@ -38,6 +41,25 @@ func TestWPSDAVPreflightAllowsDocumentDelivery(t *testing.T) {
 	}
 	if allow := response.Header().Get("Allow"); allow != "GET, OPTIONS" {
 		t.Fatalf("WPS DAV preflight Allow = %q", allow)
+	}
+}
+
+func TestGatewayDeliversXLSXWithSpreadsheetContentType(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.xlsx")
+	payload := xlsx(t)
+	write(t, target, payload)
+	handler, err := roadflowgateway.NewHandler(roadflowgateway.Config{
+		Documents: map[string]string{spreadsheetPath: target}, ReceiptTTL: 5 * time.Second, Now: time.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := serveGateway(handler, http.MethodGet, "/wps/document?fileurl="+spreadsheetPath+"&_wpsHandoff="+spreadsheetHandoff)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
+		t.Fatalf("XLSX delivery = %d, content type = %q, body = %s", response.Code, response.Header().Get("Content-Type"), response.Body.String())
+	}
+	if !bytes.Equal(response.Body.Bytes(), payload) {
+		t.Fatal("XLSX delivery changed the document bytes")
 	}
 }
 
@@ -396,6 +418,33 @@ func write(t *testing.T, target string, payload []byte) {
 	if err := os.WriteFile(target, payload, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func xlsx(t *testing.T) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	archive := zip.NewWriter(&output)
+	files := []struct {
+		name    string
+		content string
+	}{
+		{name: "[Content_Types].xml", content: `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>`},
+		{name: "_rels/.rels", content: `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+		{name: "xl/workbook.xml", content: `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1"/></sheets></workbook>`},
+	}
+	for _, entry := range files {
+		file, err := archive.Create(entry.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(file, entry.content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
 }
 
 type shortWriter struct{ header http.Header }

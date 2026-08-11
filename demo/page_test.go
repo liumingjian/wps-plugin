@@ -34,4 +34,22 @@ func TestDemoPageShowsCurrentDocumentWithOneEditAction(t *testing.T) {
 	if count := strings.Count(page, "<button"); count != 1 {
 		t.Errorf("button count = %d, want 1", count)
 	}
+
+	response, err = http.Get(server.URL + "/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	scriptBody, _ := io.ReadAll(response.Body)
+	script := string(scriptBody)
+	for _, required := range []string{"window.WpsEdit.open", "editingTasksUrl: '/editing-tasks'", "contractVersion: 1", "task.completion"} {
+		if !strings.Contains(script, required) {
+			t.Errorf("page script missing %q", required)
+		}
+	}
+	for _, obsolete := range []string{"wps-edit-demo", "task-start", "downloadUrl", "uploadUrl"} {
+		if strings.Contains(script, obsolete) {
+			t.Errorf("page script still contains obsolete bridge %q", obsolete)
+		}
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,9 +23,28 @@ import (
 )
 
 const (
-	sourcePath    = "/UploadFiles/2026/quarterly-report.docx"
-	docSourcePath = "/UploadFiles/2026/legacy-report.doc"
+	sourcePath            = "/UploadFiles/2026/quarterly-report.docx"
+	docSourcePath         = "/UploadFiles/2026/legacy-report.doc"
+	spreadsheetSourcePath = "/UploadFiles/2026/quarterly-report.xlsx"
 )
+
+func TestDocumentFormatSupportsWPSAndExcelSerializations(t *testing.T) {
+	for _, test := range []struct {
+		path   string
+		format string
+	}{
+		{path: "/UploadFiles/2026/legacy-report.WPS", format: "wps"},
+		{path: "/UploadFiles/2026/legacy-report.XLS", format: "xls"},
+		{path: "/UploadFiles/2026/quarterly-report.XLSX", format: "xlsx"},
+	} {
+		if format := roadflowoa.DocumentFormat(test.path); format != test.format {
+			t.Errorf("DocumentFormat(%q) = %q, want %q", test.path, format, test.format)
+		}
+		if format := roadflowoa.WordFormat(test.path); format != "" {
+			t.Errorf("WordFormat(%q) = %q, want empty for non-Word formats", test.path, format)
+		}
+	}
+}
 
 func TestOfficeSaveCommitsOnlyTheAuthorizedDOCXAndReturnsStrictReceipt(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "quarterly-report.docx")
@@ -66,6 +86,98 @@ func TestOfficeSaveCommitsOnlyTheAuthorizedDOCXAndReturnsStrictReceipt(t *testin
 	}
 }
 
+func TestOfficeSaveCommitsOnlyTheAuthorizedXLSXAndReturnsStrictReceipt(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.xlsx")
+	original := xlsx(t, true)
+	updated := xlsx(t, true)
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := submit(t, officeSaveHandlerFor(t, spreadsheetSourcePath, target), spreadsheetSourcePath, updated, "", "formId:formeditor", true)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var receipt struct {
+		Success bool   `json:"Success"`
+		Code    string `json:"Code"`
+		Data    struct {
+			FileURL string `json:"fileurl"`
+			Format  string `json:"format"`
+			Bytes   int    `json:"bytes"`
+		} `json:"Data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Success || receipt.Code != "overwrite_committed" || receipt.Data.FileURL != spreadsheetSourcePath ||
+		receipt.Data.Format != "xlsx" || receipt.Data.Bytes != len(updated) {
+		t.Fatalf("Overwrite Receipt = %+v", receipt)
+	}
+	stored, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, updated) {
+		t.Fatal("committed XLSX does not contain the submitted edit")
+	}
+}
+
+func TestOfficeSaveAcceptsNativeETUploadForAnAuthorizedXLSX(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.xlsx")
+	original := xlsx(t, true)
+	updated := xlsx(t, true)
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := submitNativeET(t, officeSaveHandlerFor(t, spreadsheetSourcePath, target), spreadsheetSourcePath, updated)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var receipt struct {
+		Success bool   `json:"Success"`
+		Code    string `json:"Code"`
+		Data    struct {
+			FileURL string `json:"fileurl"`
+			MD5Sum  string `json:"md5sum"`
+			Format  string `json:"format"`
+			Bytes   int    `json:"bytes"`
+		} `json:"Data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Success || receipt.Code != "overwrite_committed" || receipt.Data.FileURL != spreadsheetSourcePath ||
+		receipt.Data.MD5Sum != checksum(updated) || receipt.Data.Format != "xlsx" || receipt.Data.Bytes != len(updated) {
+		t.Fatalf("Overwrite Receipt = %+v", receipt)
+	}
+	stored, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, updated) {
+		t.Fatal("native ET upload did not replace the XLSX")
+	}
+}
+
+func TestOfficeSaveRejectsAnIncompleteXLSX(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.xlsx")
+	original := xlsx(t, true)
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	response := submit(t, officeSaveHandlerFor(t, spreadsheetSourcePath, target), spreadsheetSourcePath, xlsx(t, false), "", "formId:formeditor", true)
+	assertFailure(t, response, http.StatusBadRequest, "format_mismatch")
+	stored, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, original) {
+		t.Fatal("invalid XLSX changed original bytes")
+	}
+}
+
 func TestOfficeSaveCommitsOnlyTheAuthorizedDOCAndReturnsStrictReceipt(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "legacy-report.doc")
 	original := doc(t, "original.doc")
@@ -104,7 +216,7 @@ func TestOfficeSaveCommitsOnlyTheAuthorizedDOCAndReturnsStrictReceipt(t *testing
 	}
 }
 
-func TestOfficeSaveRejectsSerializationChangesForDOCAndDOCXTargets(t *testing.T) {
+func TestOfficeSaveRejectsUnrelatedSerializationChangesForDOCAndDOCXTargets(t *testing.T) {
 	tests := []struct {
 		name       string
 		sourcePath string
@@ -112,7 +224,7 @@ func TestOfficeSaveRejectsSerializationChangesForDOCAndDOCXTargets(t *testing.T)
 		payload    []byte
 	}{
 		{name: "DOC target receives DOCX", sourcePath: docSourcePath, original: doc(t, "original.doc"), payload: docx(t, "wrong serialization")},
-		{name: "DOCX target receives DOC", sourcePath: sourcePath, original: docx(t, "original"), payload: doc(t, "updated.doc")},
+		{name: "DOCX target receives XLSX", sourcePath: sourcePath, original: docx(t, "original"), payload: xlsx(t, true)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -130,6 +242,27 @@ func TestOfficeSaveRejectsSerializationChangesForDOCAndDOCXTargets(t *testing.T)
 				t.Fatal("format mismatch changed original bytes")
 			}
 		})
+	}
+}
+
+func TestOfficeSaveAcceptsLegacyWordSerializationForDOCXTarget(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "quarterly-report.docx")
+	original := docx(t, "original")
+	updated := doc(t, "updated.doc")
+	if err := os.WriteFile(target, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := submit(t, officeSaveHandlerFor(t, sourcePath, target), sourcePath, updated, "", "formId:formeditor", true)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	stored, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, updated) {
+		t.Fatal("legacy Word serialization was not committed")
 	}
 }
 
@@ -463,6 +596,31 @@ func submit(t *testing.T, handler http.Handler, path string, payload []byte, md5
 	return response
 }
 
+func submitNativeET(t *testing.T, handler http.Handler, path string, payload []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", `form-data; name="file"; filename=""`)
+	header.Set("Content-Type", "application/octet-stream")
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/RoadFlow/uploadfiles/OfficeSave?fileurl="+path, &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Cookie", "oa_session=valid")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
 func multipartRequest(t *testing.T, payload []byte, omittedOrExtra string) (*bytes.Reader, string) {
 	t.Helper()
 	var body bytes.Buffer
@@ -539,6 +697,36 @@ func docx(t *testing.T, text string) []byte {
 			t.Fatal(err)
 		}
 		if _, err := io.WriteString(file, content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
+}
+
+func xlsx(t *testing.T, includeSheet bool) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	archive := zip.NewWriter(&output)
+	files := []struct {
+		name    string
+		content string
+	}{
+		{name: "[Content_Types].xml", content: `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>`},
+		{name: "_rels/.rels", content: `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+		{name: "xl/workbook.xml", content: `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1"/></sheets></workbook>`},
+	}
+	if !includeSheet {
+		files[2].content = `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets/></workbook>`
+	}
+	for _, entry := range files {
+		file, err := archive.Create(entry.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(file, entry.content); err != nil {
 			t.Fatal(err)
 		}
 	}

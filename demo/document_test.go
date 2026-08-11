@@ -3,13 +3,16 @@ package demo_test
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/liumingjian/wps-plugin/agent"
 	"github.com/liumingjian/wps-plugin/demo"
 )
 
@@ -39,6 +42,87 @@ func TestAcceptedSubmissionBecomesTheCurrentDocument(t *testing.T) {
 	third := testDOCX(t, "First saved edit", "Second saved edit")
 	postDocument(t, server.URL, third, http.StatusCreated)
 	assertCurrentDocument(t, server.URL, 3, "First saved edit\nSecond saved edit", third)
+}
+
+func TestEditingTaskContractReturnsVerifiedReceipts(t *testing.T) {
+	server := httptest.NewServer(demo.Handler())
+	defer server.Close()
+
+	requestBody := strings.NewReader(`{"contractVersion":1,"documentId":"doc-001","idempotencyKey":"create-1"}`)
+	response, err := http.Post(server.URL+"/editing-tasks", "application/json", requestBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("create Editing Task status = %d, body = %s", response.StatusCode, body)
+	}
+	var descriptor agent.TaskDescriptor
+	if err := json.NewDecoder(response.Body).Decode(&descriptor); err != nil {
+		t.Fatal(err)
+	}
+	initialResponse, err := http.Get(server.URL + "/documents/doc-001/content")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := io.ReadAll(initialResponse.Body)
+	initialResponse.Body.Close()
+	initialHash := fmt.Sprintf("%x", sha256.Sum256(initial))
+	if descriptor.ContractVersion != 1 || descriptor.TaskID == "" || descriptor.Document.DocumentID != "doc-001" || descriptor.Document.DisplayName != "Demo-Document.docx" || descriptor.Document.SizeBytes != int64(len(initial)) || descriptor.Document.SHA256 != initialHash {
+		t.Fatalf("Editing Task descriptor = %+v", descriptor)
+	}
+	if descriptor.Retrieval.URL != server.URL+"/editing-tasks/"+descriptor.TaskID+"/content" || descriptor.Submission.URL != server.URL+"/editing-tasks/"+descriptor.TaskID+"/submissions" || descriptor.Completion.URL != server.URL+"/editing-tasks/"+descriptor.TaskID+"/completion" || descriptor.Submission.Profile != agent.RawBodyProfileV1 {
+		t.Fatalf("Editing Task endpoints = %+v", descriptor)
+	}
+
+	updated := testDOCX(t, "Production SDK submission")
+	updatedHash := fmt.Sprintf("%x", sha256.Sum256(updated))
+	submission, err := http.NewRequest(http.MethodPost, descriptor.Submission.URL, bytes.NewReader(updated))
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission.Header.Set("Content-Type", docxContentType)
+	submission.Header.Set("X-WPS-Snapshot-Sequence", "1")
+	submission.Header.Set("X-WPS-Snapshot-SHA256", updatedHash)
+	submission.Header.Set("Idempotency-Key", "snapshot-1")
+	response, err = http.DefaultClient.Do(submission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var acceptance agent.AcceptanceReceipt
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("Submission status = %d", response.StatusCode)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&acceptance); err != nil {
+		t.Fatal(err)
+	}
+	if !acceptance.Accepted || acceptance.SubmissionID == "" || acceptance.DocumentVersion != "2" || acceptance.SnapshotSHA256 != updatedHash || acceptance.AcceptedAt.IsZero() {
+		t.Fatalf("Acceptance Receipt = %+v", acceptance)
+	}
+
+	completion, err := http.NewRequest(http.MethodPost, descriptor.Completion.URL, strings.NewReader(`{"outcome":"submitted"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completion.Header.Set("Content-Type", "application/json")
+	response, err = http.DefaultClient.Do(completion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var receipt agent.CompletionReceipt
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("Completion status = %d", response.StatusCode)
+	}
+	if err := json.NewDecoder(response.Body).Decode(&receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Completed || receipt.TaskID != descriptor.TaskID || receipt.Outcome != "submitted" || receipt.CompletedAt.IsZero() {
+		t.Fatalf("Completion Receipt = %+v", receipt)
+	}
+	assertCurrentDocument(t, server.URL, 2, "Production SDK submission", updated)
 }
 
 func TestRejectedSubmissionDoesNotReplaceTheCurrentDocument(t *testing.T) {

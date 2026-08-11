@@ -3,16 +3,22 @@ package demo
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/liumingjian/wps-plugin/agent"
 )
 
 const (
@@ -39,6 +45,19 @@ type documentView struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+type editingTask struct {
+	descriptor  agent.TaskDescriptor
+	content     []byte
+	submissions map[string]agent.AcceptanceReceipt
+	completion  *agent.CompletionReceipt
+}
+
+type editingTaskStore struct {
+	mu          sync.Mutex
+	tasks       map[string]*editingTask
+	idempotency map[string]string
+}
+
 func Handler() http.Handler {
 	assets, err := fs.Sub(Static, "static")
 	if err != nil {
@@ -55,8 +74,142 @@ func Handler() http.Handler {
 		previewText: preview,
 		updatedAt:   time.Now().UTC(),
 	}
+	tasks := &editingTaskStore{tasks: map[string]*editingTask{}, idempotency: map[string]string{}}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /editing-tasks", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			ContractVersion int    `json:"contractVersion"`
+			DocumentID      string `json:"documentId"`
+			IdempotencyKey  string `json:"idempotencyKey"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil || request.ContractVersion != 1 || request.DocumentID != "doc-001" || request.IdempotencyKey == "" {
+			http.Error(w, "Invalid Editing Task request.", http.StatusBadRequest)
+			return
+		}
+		tasks.mu.Lock()
+		defer tasks.mu.Unlock()
+		if taskID := tasks.idempotency[request.IdempotencyKey]; taskID != "" {
+			writeJSON(w, http.StatusOK, tasks.tasks[taskID].descriptor)
+			return
+		}
+		view, content := document.snapshot()
+		taskID, err := newTaskID()
+		if err != nil {
+			http.Error(w, "Could not create Editing Task.", http.StatusInternalServerError)
+			return
+		}
+		origin := requestOrigin(r)
+		base := origin + "/editing-tasks/" + taskID
+		expires := time.Now().UTC().Add(15 * time.Minute)
+		hash := fmt.Sprintf("%x", sha256.Sum256(content))
+		descriptor := agent.TaskDescriptor{
+			ContractVersion:      1,
+			TaskID:               taskID,
+			RequiredCapabilities: []string{"durable-events", "fifo-snapshots", "recovery", "notifications"},
+			Document: agent.DocumentDescriptor{
+				DocumentID:      "doc-001",
+				DisplayName:     "Demo-Document.docx",
+				DocumentVersion: strconv.Itoa(view.Version),
+				MediaType:       agent.DOCXMediaType,
+				SizeBytes:       int64(len(content)),
+				SHA256:          hash,
+			},
+			Retrieval: agent.CapabilityEndpoint{URL: base + "/content", Method: http.MethodGet, ExpiresAt: expires},
+			Submission: agent.SubmissionDescriptor{
+				CapabilityEndpoint: agent.CapabilityEndpoint{URL: base + "/submissions", Method: http.MethodPost, ExpiresAt: expires},
+				Profile:            agent.RawBodyProfileV1,
+			},
+			Completion: agent.CapabilityEndpoint{URL: base + "/completion", Method: http.MethodPost, ExpiresAt: expires},
+		}
+		tasks.tasks[taskID] = &editingTask{descriptor: descriptor, content: content, submissions: map[string]agent.AcceptanceReceipt{}}
+		tasks.idempotency[request.IdempotencyKey] = taskID
+		writeJSON(w, http.StatusCreated, descriptor)
+	})
+	mux.HandleFunc("GET /editing-tasks/{taskID}/content", func(w http.ResponseWriter, r *http.Request) {
+		tasks.mu.Lock()
+		task := tasks.tasks[r.PathValue("taskID")]
+		if task == nil {
+			tasks.mu.Unlock()
+			http.Error(w, "Unknown Editing Task.", http.StatusNotFound)
+			return
+		}
+		content := append([]byte(nil), task.content...)
+		tasks.mu.Unlock()
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", docxContentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="Demo-Document.docx"`)
+		_, _ = w.Write(content)
+	})
+	mux.HandleFunc("POST /editing-tasks/{taskID}/submissions", func(w http.ResponseWriter, r *http.Request) {
+		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		sequence, sequenceErr := strconv.Atoi(r.Header.Get("X-WPS-Snapshot-Sequence"))
+		wantHash := r.Header.Get("X-WPS-Snapshot-SHA256")
+		idempotencyKey := r.Header.Get("Idempotency-Key")
+		if err != nil || mediaType != docxContentType || sequenceErr != nil || sequence < 1 || wantHash == "" || idempotencyKey == "" {
+			http.Error(w, "Invalid Submission metadata.", http.StatusBadRequest)
+			return
+		}
+		content, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSubmissionBytes))
+		if err != nil || fmt.Sprintf("%x", sha256.Sum256(content)) != wantHash {
+			http.Error(w, "Submission does not match its declared Snapshot.", http.StatusBadRequest)
+			return
+		}
+		preview, err := previewText(content)
+		if err != nil {
+			http.Error(w, "Submission is not a valid DOCX.", http.StatusBadRequest)
+			return
+		}
+		tasks.mu.Lock()
+		defer tasks.mu.Unlock()
+		task := tasks.tasks[r.PathValue("taskID")]
+		if task == nil {
+			http.Error(w, "Unknown Editing Task.", http.StatusNotFound)
+			return
+		}
+		if receipt, ok := task.submissions[idempotencyKey]; ok {
+			if receipt.SnapshotSHA256 != wantHash {
+				http.Error(w, "Idempotency key conflicts with another Snapshot.", http.StatusConflict)
+				return
+			}
+			writeJSON(w, http.StatusOK, receipt)
+			return
+		}
+		view := document.replace(content, preview)
+		receipt := agent.AcceptanceReceipt{
+			Accepted:        true,
+			SubmissionID:    fmt.Sprintf("%s-%d", task.descriptor.TaskID, sequence),
+			DocumentVersion: strconv.Itoa(view.Version),
+			SnapshotSHA256:  wantHash,
+			AcceptedAt:      time.Now().UTC(),
+		}
+		task.submissions[idempotencyKey] = receipt
+		writeJSON(w, http.StatusCreated, receipt)
+	})
+	mux.HandleFunc("POST /editing-tasks/{taskID}/completion", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Outcome string `json:"outcome"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil || (request.Outcome != "submitted" && request.Outcome != "unchanged") {
+			http.Error(w, "Invalid Editing Task outcome.", http.StatusBadRequest)
+			return
+		}
+		tasks.mu.Lock()
+		defer tasks.mu.Unlock()
+		task := tasks.tasks[r.PathValue("taskID")]
+		if task == nil {
+			http.Error(w, "Unknown Editing Task.", http.StatusNotFound)
+			return
+		}
+		if task.completion == nil {
+			task.completion = &agent.CompletionReceipt{Completed: true, TaskID: task.descriptor.TaskID, Outcome: request.Outcome, CompletedAt: time.Now().UTC()}
+		}
+		if task.completion.Outcome != request.Outcome {
+			http.Error(w, "Editing Task already completed with another outcome.", http.StatusConflict)
+			return
+		}
+		writeJSON(w, http.StatusOK, task.completion)
+	})
 	mux.HandleFunc("GET /documents/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("id") != "doc-001" {
 			http.Error(w, "Unknown Document ID.", http.StatusNotFound)
@@ -114,6 +267,28 @@ func Handler() http.Handler {
 	})
 	mux.Handle("/", http.FileServer(http.FS(assets)))
 	return mux
+}
+
+func newTaskID() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("task-%x", random), nil
+}
+
+func requestOrigin(request *http.Request) string {
+	scheme := "http"
+	if request.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + request.Host
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func (document *documentState) snapshot() (documentView, []byte) {

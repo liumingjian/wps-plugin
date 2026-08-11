@@ -5,6 +5,14 @@ const taskSection = document.querySelector('#task');
 const taskStatus = document.querySelector('#task-status');
 const actions = document.querySelector('#actions');
 const notificationError = document.querySelector('#notification-error');
+let pageTab;
+let pageOrigin = '';
+
+async function currentPageTab() {
+  if (pageTab?.id != null) return chrome.tabs.get(pageTab.id);
+  [pageTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return pageTab;
+}
 
 function commandButton(label, command, secondary = false) {
   const button = document.createElement('button');
@@ -15,9 +23,10 @@ function commandButton(label, command, secondary = false) {
 }
 
 async function render() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await currentPageTab();
   let origin;
   try { origin = new URL(tab.url).origin; } catch { origin = ''; }
+  pageOrigin = origin;
   const data = await chrome.runtime.sendMessage({ type: 'popup-state' });
   const trusted = data.origins.includes(origin);
   stateLabel.textContent = trusted ? 'Origin approved' : 'Action required';
@@ -40,7 +49,7 @@ async function render() {
 }
 
 approve.addEventListener('click', async () => {
-  await chrome.runtime.sendMessage({ type: 'trust-origin' });
+  await chrome.runtime.sendMessage({ type: 'trust-origin', tabId: pageTab?.id, origin: pageOrigin });
   await render();
 });
 render();

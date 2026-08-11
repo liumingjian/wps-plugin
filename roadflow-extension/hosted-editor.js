@@ -9,9 +9,12 @@ const host = document.querySelector('#editor-host');
 const retryButton = document.querySelector('#retry-verification');
 const saveButton = document.querySelector('#save-document');
 const returnButton = document.querySelector('#return-to-oa');
+const XL_SHARED = 2;
+const XL_ALL_CHANGES = 3;
 let currentContext;
 let application;
 let wpsObject;
+let openedOfficeFile;
 let editorState = 'opening';
 
 function debugURL(value) {
@@ -63,8 +66,12 @@ function validHTTPURL(value) {
 }
 
 function validatedContext(value, handoff) {
-  if (!value || value.handoff !== handoff || value.sourcePath !== value.sourceIdentity?.sourcePath ||
-      value.expectedFormat !== value.sourceIdentity?.actualFormat || !['doc', 'docx'].includes(value.expectedFormat) ||
+  const capability = RoadFlowFormatCapabilities.forFormat(value?.expectedFormat);
+  const returnMode = value?.returnMode || 'navigate';
+  if (!value || !capability || value.handoff !== handoff || value.sourcePath !== value.sourceIdentity?.sourcePath ||
+      value.expectedFormat !== value.sourceIdentity?.actualFormat ||
+      (value.editorKind && value.editorKind !== capability.editorKind) ||
+      !['navigate', 'close'].includes(returnMode) ||
       !Number.isInteger(value.sourceIdentity?.byteCount) || value.sourceIdentity.byteCount <= 0 ||
       !/^[a-f0-9]{64}$/.test(value.sourceIdentity?.sha256 || '') || typeof value.title !== 'string' ||
       typeof value.returnURL !== 'string') return undefined;
@@ -78,13 +85,14 @@ function validatedContext(value, handoff) {
       documentPath !== value.sourcePath || officeSaveURL.searchParams.get('fileurl') !== value.sourcePath) {
     return undefined;
   }
-  return value;
+  return { ...value, editorKind: capability.editorKind, returnMode };
 }
 
 function destroyWPS() {
   debug('wps-surface-destroyed', { editorState });
   application = undefined;
   wpsObject = undefined;
+  openedOfficeFile = undefined;
   host.className = '';
   host.replaceChildren();
 }
@@ -94,7 +102,8 @@ function mountWPS() {
   wpsObject = document.createElement('object');
   wpsObject.id = 'wps-surface';
   wpsObject.name = 'wps-surface';
-  wpsObject.type = 'application/x-wps';
+  const capability = RoadFlowFormatCapabilities.forFormat(currentContext?.expectedFormat);
+  wpsObject.type = capability?.mimeType || 'application/x-wps';
   wpsObject.width = '100%';
   wpsObject.height = '100%';
   wpsObject.setAttribute('hiden_taskpane', 'true');
@@ -126,21 +135,43 @@ async function waitForApplication() {
   throw new Error('WPS Application 不可用');
 }
 
-async function waitForActiveDocument() {
-  debug('wps-document-wait-start', { attempts: 30, intervalMilliseconds: 250 });
+function activeOfficeFile() {
+  const candidates = [];
+  if (currentContext?.editorKind === 'spreadsheet') {
+    try { candidates.push(application?.ActiveWorkbook); } catch (error) {
+      debug('wps-active-workbook-probe-failed', { error: debugError(error) });
+    }
+  }
+  try { candidates.push(application?.ActiveDocument); } catch (error) {
+    debug('wps-active-document-probe-failed', { error: debugError(error) });
+  }
+  candidates.push(openedOfficeFile);
+  return candidates.find(candidate =>
+    candidate && ['function', 'object'].includes(typeof candidate)
+  );
+}
+
+async function waitForActiveOfficeFile() {
+  debug('wps-office-file-wait-start', {
+    editorKind: currentContext?.editorKind,
+    attempts: 30,
+    intervalMilliseconds: 250
+  });
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    if (application?.ActiveDocument) {
-      debug('wps-document-ready', { attempt: attempt + 1 });
+    if (activeOfficeFile()) {
+      debug('wps-office-file-ready', { editorKind: currentContext?.editorKind, attempt: attempt + 1 });
       return;
     }
     await delay(250);
   }
-  debug('wps-document-timeout', { attempts: 30 });
-  throw new Error('WPS ActiveDocument 创建超时');
+  debug('wps-office-file-timeout', { editorKind: currentContext?.editorKind, attempts: 30 });
+  throw new Error(currentContext?.editorKind === 'spreadsheet'
+    ? 'WPS ActiveWorkbook 创建超时'
+    : 'WPS ActiveDocument 创建超时');
 }
 
-function enableRevisionTracking() {
-  const activeDocument = application?.ActiveDocument;
+function enableWriterRevisionTracking() {
+  const activeDocument = activeOfficeFile();
   const view = activeDocument?.ActiveWindow?.View || application?.ActiveWindow?.View;
   if (!activeDocument || !view) throw new Error('WPS 修订接口不可用');
 
@@ -158,6 +189,80 @@ function enableRevisionTracking() {
       !view.ShowInsertionsAndDeletions || Number(view.RevisionsView) !== 0) {
     throw new Error('WPS 未能开启修订留痕');
   }
+}
+
+function enableSpreadsheetRevisionTracking() {
+  const workbook = activeOfficeFile();
+  const hasRevisionAPI = workbook && (
+    typeof workbook.HighlightChangesOptions === 'function' ||
+    typeof workbook.KeepChangeHistory !== 'undefined' ||
+    typeof workbook.HighlightChangesOnScreen !== 'undefined' ||
+    typeof workbook.ListChangesOnNewSheet !== 'undefined'
+  );
+  if (!hasRevisionAPI) throw new Error('WPS 表格修订接口不可用');
+
+  if (workbook.MultiUserEditing !== true) {
+    const workbookPath = workbook.FullName;
+    if (typeof workbook.SaveAs !== 'function' || typeof workbookPath !== 'string' || !workbookPath) {
+      throw new Error('WPS 无法将表格切换为共享修订模式');
+    }
+    const canRestoreDisplayAlerts = application && typeof application.DisplayAlerts !== 'undefined';
+    const previousDisplayAlerts = canRestoreDisplayAlerts ? application.DisplayAlerts : undefined;
+    try {
+      if (canRestoreDisplayAlerts) application.DisplayAlerts = false;
+      workbook.SaveAs(workbookPath, undefined, undefined, undefined, undefined, undefined, XL_SHARED);
+    } finally {
+      if (canRestoreDisplayAlerts) application.DisplayAlerts = previousDisplayAlerts;
+    }
+  }
+  if (workbook.MultiUserEditing !== true) throw new Error('WPS 未能开启表格共享修订模式');
+
+  workbook.KeepChangeHistory = true;
+  if (typeof workbook.HighlightChangesOptions === 'function') {
+    workbook.HighlightChangesOptions(XL_ALL_CHANGES, 'Everyone');
+  }
+  workbook.HighlightChangesOnScreen = true;
+  workbook.ListChangesOnNewSheet = false;
+
+  const state = {
+    keepChangeHistory: workbook.KeepChangeHistory,
+    highlightChangesOnScreen: workbook.HighlightChangesOnScreen,
+    listChangesOnNewSheet: workbook.ListChangesOnNewSheet,
+    multiUserEditing: workbook.MultiUserEditing
+  };
+  debug('wps-spreadsheet-revision-state', state);
+  if (!state.keepChangeHistory) throw new Error('WPS 未能开启表格修订留痕');
+  if (state.multiUserEditing === true && !state.highlightChangesOnScreen) {
+    throw new Error('WPS 未能显示表格修订');
+  }
+}
+
+function enableRevisionTracking() {
+  if (currentContext?.editorKind === 'spreadsheet') {
+    enableSpreadsheetRevisionTracking();
+    return;
+  }
+  enableWriterRevisionTracking();
+}
+
+function openOfficeFile() {
+  openedOfficeFile = undefined;
+  if (currentContext?.editorKind === 'spreadsheet') {
+    const openWorkbook = application?.Workbooks?.Open;
+    if (typeof openWorkbook === 'function') {
+      debug('wps-open-workbook', { documentURL: debugURL(currentContext.documentURL) });
+      openedOfficeFile = openWorkbook.call(application.Workbooks, currentContext.documentURL);
+      debug('wps-open-workbook-returned', {
+        objectAvailable: Boolean(openedOfficeFile && ['function', 'object'].includes(typeof openedOfficeFile))
+      });
+      return openedOfficeFile;
+    }
+  }
+  if (typeof application?.openDocument !== 'function') {
+    throw new Error('WPS 打开接口不可用');
+  }
+  openedOfficeFile = application.openDocument(currentContext.documentURL, false);
+  return openedOfficeFile;
 }
 
 function showFailure(error) {
@@ -199,15 +304,37 @@ async function enterEditor() {
   mountWPS();
   application = await waitForApplication();
   debug('wps-open-document-start', { documentURL: debugURL(context.documentURL), readOnly: false });
-  application.openDocument(context.documentURL, false);
-  debug('wps-open-document-called', { documentURL: debugURL(context.documentURL) });
-  await waitForActiveDocument();
+  openOfficeFile();
+  debug('wps-open-document-called', { documentURL: debugURL(context.documentURL), editorKind: context.editorKind });
+  await waitForActiveOfficeFile();
   enableRevisionTracking();
   host.className = 'unlocked';
   editorState = 'editable';
-  status.textContent = '正文可编辑';
+  status.textContent = context.editorKind === 'spreadsheet' ? '表格可编辑' : '正文可编辑';
   saveButton.disabled = false;
   returnButton.disabled = false;
+}
+
+function spreadsheetSaveResultAccepted(result) {
+  if (result === true) return true;
+  if (typeof result !== 'string') return false;
+  try {
+    const response = JSON.parse(result);
+    return response?.result === true || response?.Success === true || response?.success === true;
+  } catch {
+    return false;
+  }
+}
+
+function saveSpreadsheetDocument(workbook) {
+  if (!workbook || typeof workbook.Save !== 'function' || typeof application?.SaveDocumentToServer !== 'function') {
+    throw new Error('WPS 表格保存接口不可用');
+  }
+  const localSaveResult = workbook.Save();
+  if (localSaveResult === false) throw new Error('WPS 表格本地保存失败');
+  const result = application.SaveDocumentToServer(currentContext.officeSaveURL);
+  debug('wps-spreadsheet-save-response', { result, officeSaveURL: debugURL(currentContext.officeSaveURL) });
+  if (!spreadsheetSaveResultAccepted(result)) throw new Error('overwrite rejected');
 }
 
 async function saveDocument() {
@@ -222,10 +349,16 @@ async function saveDocument() {
   saveButton.disabled = true;
   returnButton.disabled = true;
   try {
-    const result = application?.ActiveDocument?.saveURL_FormData(currentContext.officeSaveURL, 'formId:formeditor');
-    debug('wps-save-response', { result, officeSaveURL: debugURL(currentContext.officeSaveURL) });
-    if (result !== true) {
-      throw new Error('overwrite rejected');
+    const officeFile = activeOfficeFile();
+    if (currentContext.editorKind === 'spreadsheet') {
+      saveSpreadsheetDocument(officeFile);
+    } else {
+      if (!officeFile || typeof officeFile.saveURL_FormData !== 'function') {
+        throw new Error('WPS 保存接口不可用');
+      }
+      const result = officeFile.saveURL_FormData(currentContext.officeSaveURL, 'formId:formeditor');
+      debug('wps-save-response', { result, officeSaveURL: debugURL(currentContext.officeSaveURL) });
+      if (result !== true) throw new Error('overwrite rejected');
     }
     editorState = 'overwritten';
     status.textContent = '已保存';
@@ -240,11 +373,24 @@ async function saveDocument() {
   returnButton.disabled = false;
 }
 
+function returnToOriginalPage() {
+  debug('return-to-oa', {
+    returnMode: currentContext?.returnMode,
+    returnURL: debugURL(currentContext?.returnURL),
+    editorState
+  });
+  if (currentContext?.returnMode === 'close') {
+    try { window.opener?.focus?.(); } catch (error) { debug('opener-focus-failed', { error: debugError(error) }); }
+    window.close();
+    return;
+  }
+  location.replace(currentContext.returnURL);
+}
+
 function returnToOA() {
   if (!currentContext || ['opening', 'overwriting'].includes(editorState)) return;
   if (editorState === 'overwrite-failed' && !confirm('保存失败。放弃当前修改并返回 OA？')) return;
-  debug('return-to-oa', { returnURL: debugURL(currentContext.returnURL), editorState });
-  location.replace(currentContext.returnURL);
+  returnToOriginalPage();
 }
 
 function requestReverification() {
@@ -252,7 +398,7 @@ function requestReverification() {
   debug('reverification-requested', { returnURL: debugURL(currentContext.returnURL) });
   retryButton.disabled = true;
   status.textContent = '正在返回 OA，请重新打开文档';
-  location.replace(currentContext.returnURL);
+  returnToOriginalPage();
 }
 
 retryButton.addEventListener('click', requestReverification);

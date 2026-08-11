@@ -2,7 +2,7 @@
 
 The customer delivery contains exactly two files:
 
-- `local-wps-editing-1.0.0.crx`, signed with fixed extension ID `mjjoapeohdfkepmocpahbimmmenlfdcb`.
+- `local-wps-editing-1.0.1.crx`, signed with fixed extension ID `mjjoapeohdfkepmocpahbimmmenlfdcb`.
 - `local-wps-editing_1.0.0-1_arm64.deb`, for the designated Kylin V10 ARM64 desktop.
 
 The raw ARM64 Host is a supplier-support artifact, not a third customer deliverable.

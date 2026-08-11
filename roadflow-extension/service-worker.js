@@ -1,6 +1,6 @@
 'use strict';
 
-importScripts('configuration.js', 'source-identity-contract.js');
+importScripts('configuration.js', 'source-identity-contract.js', 'format-capabilities.js');
 
 const DEBUG_PREFIX = '[RoadFlow WPS debug]';
 
@@ -45,6 +45,19 @@ function senderOrigin(sender) {
   try { return new URL(sender?.url).origin; } catch { return undefined; }
 }
 
+function returnURLForSender(activation, sender) {
+  if (typeof activation?.returnURL !== 'string' || activation.returnURL !== sender?.url) return undefined;
+  const nestedFrame = Number.isInteger(sender?.frameId) && sender.frameId !== 0;
+  const returnURL = nestedFrame ? sender.tab?.url : sender.url;
+  try {
+    const parsed = new URL(returnURL);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return undefined;
+  } catch {
+    return undefined;
+  }
+  return returnURL;
+}
+
 async function configurationFor(sender) {
   const configuration = await configuredIntegration();
   if (!configuration || !sender?.tab || !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender))) {
@@ -62,9 +75,11 @@ function editorLaunch(handoff, context) {
   documentURL.hash = `roadflow-handoff=${handoff}`;
   return Object.freeze({
     documentURL: documentURL.href,
+    editorKind: context.capability.editorKind,
     expectedFormat: context.expectedFormat,
     handoff,
     officeSaveURL: officeSaveURL.href,
+    returnMode: context.returnMode,
     returnURL: context.returnURL,
     sourceIdentity: context.sourceIdentity,
     sourcePath: context.sourcePath,
@@ -74,24 +89,29 @@ function editorLaunch(handoff, context) {
 
 async function createEditorHandoff(activation, sender) {
   const configuration = await configuredIntegration();
-  if (!configuration || !sender?.tab || sender.url !== activation?.returnURL ||
-      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender))) return { ok: false };
+  const returnURL = returnURLForSender(activation, sender);
+  const returnMode = activation?.returnMode || 'navigate';
+  if (!configuration || !sender?.tab || !returnURL ||
+      !['navigate', 'close'].includes(returnMode) ||
+      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender)) ||
+      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin({ url: returnURL }))) return { ok: false };
 
   let source;
   try { source = new URL(activation.sourceURL); } catch { return { ok: false }; }
   const sourcePath = RoadFlowSourceIdentityContract.sourcePath(source);
-  if (!sourcePath || !RoadFlowConfiguration.trustsOrigin(configuration, source.origin) ||
-      !/^https?:$/.test(source.protocol) || !/\.docx?$/i.test(sourcePath)) {
+  const capability = RoadFlowFormatCapabilities.forPath(sourcePath);
+  if (!sourcePath || !capability || !RoadFlowConfiguration.trustsOrigin(configuration, source.origin) ||
+      !/^https?:$/.test(source.protocol)) {
     return { ok: false };
   }
-  const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
+  const expectedFormat = capability.format;
   const sourceIdentity = RoadFlowSourceIdentityContract.validate(
     activation.sourceIdentity, sourcePath, expectedFormat
   );
   if (!sourceIdentity) return { ok: false };
 
   // In all-origin mode the OA page remains the owner of its OfficeSave endpoint.
-  const trustedOrigin = configuration.trustedOrigin || senderOrigin(sender);
+  const trustedOrigin = configuration.trustedOrigin || senderOrigin({ url: returnURL });
 
   const encodedFilename = source.pathname.slice(source.pathname.lastIndexOf('/') + 1);
   let filename = encodedFilename;
@@ -103,11 +123,13 @@ async function createEditorHandoff(activation, sender) {
   return {
     ok: true,
     editorLaunch: editorLaunch(handoff, {
-      returnURL: sender.url,
+      returnURL,
       trustedOrigin,
       sourceURL: source.href,
       sourcePath,
       title,
+      returnMode,
+      capability,
       expectedFormat,
       sourceIdentity
     })

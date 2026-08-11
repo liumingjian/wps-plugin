@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 output=${OUTPUT:-"$repo/dist/release/extension"}
-version=${VERSION:-1.0.0}
+version=${VERSION:-1.0.1}
 
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
   printf 'Invalid extension version: %s\n' "$version" >&2
@@ -18,7 +18,7 @@ mkdir -p "$output"
 for file in content.js sdk.js service-worker.js popup.html popup.css popup.js; do
   install -m 0644 "$repo/extension/$file" "$output/$file"
 done
-sed "s/\"version\": \"1.0.0\"/\"version\": \"$version\"/" "$repo/extension/manifest.json" >"$output/manifest.json"
+sed -E "s/\"version\": \"[^\"]+\"/\"version\": \"$version\"/" "$repo/extension/manifest.json" >"$output/manifest.json"
 chmod 0644 "$output/manifest.json"
 base64 --decode "$repo/extension/icon.png.base64" >"$output/icon.png"
 chmod 0644 "$output/icon.png"

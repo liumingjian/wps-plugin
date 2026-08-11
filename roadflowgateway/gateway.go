@@ -89,7 +89,7 @@ func NewHandler(config Config) (http.Handler, error) {
 	}
 	documents := make(map[string]string, len(config.Documents))
 	for sourcePath, target := range config.Documents {
-		if !roadflowoa.ValidSourcePath(sourcePath) || roadflowoa.WordFormat(sourcePath) == "" || target == "" {
+		if !roadflowoa.ValidSourcePath(sourcePath) || roadflowoa.DocumentFormat(sourcePath) == "" || target == "" {
 			return nil, fmt.Errorf("invalid Gateway Document mapping %q", sourcePath)
 		}
 		documents[sourcePath] = target
@@ -175,7 +175,7 @@ func (gateway *handler) deliverDocument(response http.ResponseWriter, request *h
 		return
 	}
 	payload, err := os.ReadFile(target)
-	format := roadflowoa.WordFormat(sourcePath)
+	format := roadflowoa.DocumentFormat(sourcePath)
 	if err != nil || len(payload) != int(info.Size()) || roadflowoa.ValidateFormatCompatibleDocument(payload, format) != nil {
 		http.Error(response, "Document rejected", http.StatusUnprocessableEntity)
 		return
@@ -183,11 +183,7 @@ func (gateway *handler) deliverDocument(response http.ResponseWriter, request *h
 
 	response.Header().Set("Cache-Control", "no-store")
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
-	contentType := "application/msword"
-	if format == "docx" {
-		contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	}
-	response.Header().Set("Content-Type", contentType)
+	response.Header().Set("Content-Type", contentTypeForDocumentFormat(format))
 	written, err := response.Write(payload)
 	if err != nil || written != len(payload) {
 		return
@@ -204,6 +200,23 @@ func (gateway *handler) deliverDocument(response http.ResponseWriter, request *h
 		SourcePath:   sourcePath,
 	}
 	gateway.recordReceipt(receipt)
+}
+
+func contentTypeForDocumentFormat(format string) string {
+	switch format {
+	case "doc":
+		return "application/msword"
+	case "docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case "wps":
+		return "application/vnd.ms-works"
+	case "xls":
+		return "application/vnd.ms-excel"
+	case "xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func (gateway *handler) recordReceipt(receipt deliveryReceipt) {

@@ -43,7 +43,19 @@ var docFIBLayouts = map[uint16]docFIBLayout{
 	0x00b7: {nFib: 0x0112, fcLcbCount: 0x00b7, cswNew: 5},
 }
 
-var md5Pattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+type ooxmlSpecification struct {
+	mainPath          string
+	contentType       string
+	rootName          string
+	namespaces        []string
+	relationshipTypes []string
+	requiredChild     string
+}
+
+var (
+	md5Pattern       = regexp.MustCompile(`^[a-f0-9]{32}$`)
+	wpsStreamPattern = regexp.MustCompile(`(?i)^(WPS|WPSDocument|Document|Content|Contents|BodyText)$`)
+)
 
 // OfficeSaveConfig binds authorized OA source paths to their server-managed Documents.
 type OfficeSaveConfig struct {
@@ -56,6 +68,12 @@ type officeSaveHandler struct {
 	documents     map[string]string
 	authenticated func(*http.Request) bool
 	authorized    func(*http.Request, string) bool
+}
+
+type multipartDocumentResult struct {
+	file        io.ReadCloser
+	declaredMD5 string
+	nativeET    bool
 }
 
 type overwriteResponse struct {
@@ -79,8 +97,8 @@ func NewOfficeSaveHandler(config OfficeSaveConfig) (http.Handler, error) {
 	}
 	documents := make(map[string]string, len(config.Documents))
 	for sourcePath, target := range config.Documents {
-		if !validSourcePath(sourcePath) || wordFormat(sourcePath) == "" || target == "" {
-			return nil, fmt.Errorf("invalid Word Overwrite Target mapping %q", sourcePath)
+		if !validSourcePath(sourcePath) || documentFormat(sourcePath) == "" || target == "" {
+			return nil, fmt.Errorf("invalid Document Overwrite Target mapping %q", sourcePath)
 		}
 		documents[sourcePath] = target
 	}
@@ -132,24 +150,24 @@ func (handler *officeSaveHandler) ServeHTTP(response http.ResponseWriter, reques
 	if request.MultipartForm != nil {
 		defer request.MultipartForm.RemoveAll()
 	}
-	file, declaredMD5, ok := multipartDocument(request)
+	format := documentFormat(sourcePath)
+	multipart, ok := multipartDocument(request, format)
 	if !ok {
 		writeFailure(response, http.StatusBadRequest, "invalid_multipart", "The overwrite request is invalid.")
 		return
 	}
-	payload, err := io.ReadAll(io.LimitReader(file, maxCompressedBytes+1))
-	closeErr := file.Close()
+	payload, err := io.ReadAll(io.LimitReader(multipart.file, maxCompressedBytes+1))
+	closeErr := multipart.file.Close()
 	if err != nil || closeErr != nil || len(payload) == 0 || len(payload) > maxCompressedBytes {
 		writeFailure(response, http.StatusBadRequest, "invalid_multipart", "The overwrite request is invalid.")
 		return
 	}
 	storedMD5 := fmt.Sprintf("%x", md5.Sum(payload))
-	if !md5Pattern.MatchString(declaredMD5) || declaredMD5 != storedMD5 {
+	if !multipart.nativeET && (!md5Pattern.MatchString(multipart.declaredMD5) || multipart.declaredMD5 != storedMD5) {
 		writeFailure(response, http.StatusBadRequest, "checksum_mismatch", "The Document checksum did not match.")
 		return
 	}
-	format := wordFormat(sourcePath)
-	if err := validateWordDocument(payload, format); err != nil {
+	if err := validateFormatCompatibleDocument(payload, format); err != nil {
 		writeFailure(response, http.StatusBadRequest, "format_mismatch", "The submitted Document format does not match the Overwrite Target.")
 		return
 	}
@@ -168,57 +186,77 @@ func (handler *officeSaveHandler) ServeHTTP(response http.ResponseWriter, reques
 }
 
 func wordFormat(sourcePath string) string {
+	format := documentFormat(sourcePath)
+	if format == "doc" || format == "docx" {
+		return format
+	}
+	return ""
+}
+
+func documentFormat(sourcePath string) string {
 	switch {
 	case strings.EqualFold(filepath.Ext(sourcePath), ".docx"):
 		return "docx"
 	case strings.EqualFold(filepath.Ext(sourcePath), ".doc"):
 		return "doc"
+	case strings.EqualFold(filepath.Ext(sourcePath), ".wps"):
+		return "wps"
+	case strings.EqualFold(filepath.Ext(sourcePath), ".xls"):
+		return "xls"
+	case strings.EqualFold(filepath.Ext(sourcePath), ".xlsx"):
+		return "xlsx"
 	default:
 		return ""
 	}
 }
 
-func validateWordDocument(payload []byte, format string) error {
-	if format == "docx" {
-		return validateDOCX(payload)
-	}
-	if format == "doc" {
+func validateFormatCompatibleDocument(payload []byte, format string) error {
+	switch format {
+	case "docx":
+		if err := validateDOCX(payload); err == nil {
+			return nil
+		}
+		// WPS saveURL_FormData can serialize a DOCX edit as a legacy CFB Word
+		// document while the OA keeps the original .docx path.
 		return validateDOC(payload)
+	case "doc":
+		return validateDOC(payload)
+	case "wps":
+		return validateWPS(payload)
+	case "xls":
+		return validateXLS(payload)
+	case "xlsx":
+		if err := validateXLSX(payload); err == nil {
+			return nil
+		}
+		// Keep the server contract aligned with the WPS XLSX save behavior.
+		return validateXLS(payload)
+	default:
+		return errors.New("unsupported Document format")
 	}
-	return errors.New("unsupported Word format")
 }
 
-// ValidateFormatCompatibleDocument validates an actual Word serialization for OA and Gateway boundaries.
+// ValidateFormatCompatibleDocument validates an actual serialization for OA and Gateway boundaries.
 func ValidateFormatCompatibleDocument(payload []byte, format string) error {
-	return validateWordDocument(payload, format)
+	return validateFormatCompatibleDocument(payload, format)
 }
 
 // WordFormat returns the supported Word serialization declared by a source path.
 func WordFormat(sourcePath string) string { return wordFormat(sourcePath) }
 
+// DocumentFormat returns the supported serialization declared by a source path.
+func DocumentFormat(sourcePath string) string { return documentFormat(sourcePath) }
+
 // ValidSourcePath reports whether a source path is normalized and safe for an exact mapping.
 func ValidSourcePath(sourcePath string) bool { return validSourcePath(sourcePath) }
 
-// MaxDocumentBytes is the maximum accepted serialized Word Document size.
+// MaxDocumentBytes is the maximum accepted serialized Document size.
 const MaxDocumentBytes = maxCompressedBytes
 
 func validateDOC(payload []byte) error {
-	container, err := mscfb.New(bytes.NewReader(payload))
+	rootStreams, err := cfbRootStreams(payload)
 	if err != nil {
-		return fmt.Errorf("invalid CFB container: %w", err)
-	}
-	rootStreams := map[string]*mscfb.File{}
-	for {
-		entry, err := container.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("invalid CFB directory: %w", err)
-		}
-		if len(entry.Path) == 0 && !entry.FileInfo().IsDir() {
-			rootStreams[entry.Name] = entry
-		}
+		return err
 	}
 	wordDocument := rootStreams["WordDocument"]
 	if wordDocument == nil {
@@ -256,6 +294,89 @@ func validateDOC(payload []byte) error {
 	return nil
 }
 
+func cfbRootStreams(payload []byte) (map[string]*mscfb.File, error) {
+	container, err := mscfb.New(bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("invalid CFB container: %w", err)
+	}
+	rootStreams := map[string]*mscfb.File{}
+	for {
+		entry, err := container.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("invalid CFB directory: %w", err)
+		}
+		if len(entry.Path) == 0 && !entry.FileInfo().IsDir() {
+			rootStreams[entry.Name] = entry
+		}
+	}
+	return rootStreams, nil
+}
+
+func validateWPS(payload []byte) error {
+	if err := validateDOC(payload); err == nil {
+		return nil
+	}
+	rootStreams, err := cfbRootStreams(payload)
+	if err != nil {
+		return err
+	}
+	for name, entry := range rootStreams {
+		if entry.Size > 0 && wpsStreamPattern.MatchString(name) {
+			return nil
+		}
+	}
+	return errors.New("invalid WPS container")
+}
+
+func validateXLS(payload []byte) error {
+	rootStreams, err := cfbRootStreams(payload)
+	if err != nil {
+		return err
+	}
+	workbook := rootStreams["Workbook"]
+	if workbook == nil {
+		workbook = rootStreams["Book"]
+	}
+	if workbook == nil || workbook.Size < 12 || workbook.Size > maxUncompressedBytes {
+		return errors.New("Workbook stream is missing or invalid")
+	}
+	contents, err := io.ReadAll(io.LimitReader(workbook, maxUncompressedBytes+1))
+	if err != nil || len(contents) != int(workbook.Size) {
+		return errors.New("Workbook stream is truncated")
+	}
+	if len(contents) < 12 || binary.LittleEndian.Uint16(contents[0:2]) != 0x0809 ||
+		binary.LittleEndian.Uint16(contents[2:4]) < 4 ||
+		4+int(binary.LittleEndian.Uint16(contents[2:4])) > len(contents) ||
+		binary.LittleEndian.Uint16(contents[6:8]) != 0x0005 {
+		return errors.New("invalid Workbook BOF")
+	}
+
+	hasSheet, hasGlobalsEOF := false, false
+	for offset := 0; offset+4 <= len(contents); {
+		recordType := binary.LittleEndian.Uint16(contents[offset : offset+2])
+		recordSize := int(binary.LittleEndian.Uint16(contents[offset+2 : offset+4]))
+		nextOffset := offset + 4 + recordSize
+		if nextOffset > len(contents) {
+			return errors.New("truncated Workbook record")
+		}
+		if recordType == 0x0085 {
+			hasSheet = true
+		}
+		if recordType == 0x000a && hasSheet {
+			hasGlobalsEOF = true
+			break
+		}
+		offset = nextOffset
+	}
+	if !hasSheet || !hasGlobalsEOF {
+		return errors.New("Workbook sheets are missing")
+	}
+	return nil
+}
+
 func validSourcePath(value string) bool {
 	decoded, err := url.PathUnescape(value)
 	return err == nil && strings.HasPrefix(value, "/") && strings.HasPrefix(decoded, "/") &&
@@ -264,21 +385,37 @@ func validSourcePath(value string) bool {
 		!strings.Contains(value, "//") && !strings.Contains(decoded, "//")
 }
 
-func multipartDocument(request *http.Request) (io.ReadCloser, string, bool) {
+func multipartDocument(request *http.Request, format string) (multipartDocumentResult, bool) {
 	form := request.MultipartForm
-	if form == nil || len(form.Value) != 2 || len(form.File) != 1 ||
-		len(form.Value["md5sum"]) != 1 || len(form.Value["filename"]) != 1 ||
-		len(form.File["filedata"]) != 1 || form.Value["filename"][0] != compatibilityData {
-		return nil, "", false
+	if form == nil {
+		return multipartDocumentResult{}, false
 	}
-	file, err := form.File["filedata"][0].Open()
-	return file, form.Value["md5sum"][0], err == nil
+	if len(form.Value) == 2 && len(form.File) == 1 &&
+		len(form.Value["md5sum"]) == 1 && len(form.Value["filename"]) == 1 &&
+		len(form.File["filedata"]) == 1 && form.Value["filename"][0] == compatibilityData {
+		file, err := form.File["filedata"][0].Open()
+		return multipartDocumentResult{file: file, declaredMD5: form.Value["md5sum"][0]}, err == nil
+	}
+	if format != "xls" && format != "xlsx" {
+		return multipartDocumentResult{}, false
+	}
+	if len(form.Value) == 1 && len(form.File) == 0 && len(form.Value["file"]) == 1 {
+		return multipartDocumentResult{
+			file:     io.NopCloser(strings.NewReader(form.Value["file"][0])),
+			nativeET: true,
+		}, true
+	}
+	if len(form.Value) == 0 && len(form.File) == 1 && len(form.File["file"]) == 1 && form.File["file"][0].Filename == "" {
+		file, err := form.File["file"][0].Open()
+		return multipartDocumentResult{file: file, nativeET: true}, err == nil
+	}
+	return multipartDocumentResult{}, false
 }
 
-func validateDOCX(payload []byte) error {
+func validateOOXML(payload []byte, specification ooxmlSpecification) error {
 	archive, err := zip.NewReader(bytes.NewReader(payload), int64(len(payload)))
 	if err != nil || len(archive.File) == 0 || len(archive.File) > maxArchiveMembers {
-		return errors.New("invalid DOCX archive")
+		return errors.New("invalid OOXML archive")
 	}
 	files := make(map[string]*zip.File, len(archive.File))
 	var uncompressed uint64
@@ -286,37 +423,66 @@ func validateDOCX(payload []byte) error {
 		memberPath := strings.TrimSuffix(file.Name, "/")
 		if memberPath == "" || strings.Contains(memberPath, "\\") || path.Clean("/"+memberPath) != "/"+memberPath || files[file.Name] != nil ||
 			(strings.HasSuffix(file.Name, "/") && (!file.FileInfo().IsDir() || file.UncompressedSize64 != 0)) {
-			return errors.New("unsafe DOCX member")
+			return errors.New("unsafe OOXML member")
 		}
 		uncompressed += file.UncompressedSize64
 		if uncompressed > maxUncompressedBytes || (len(payload) > 0 && uncompressed > uint64(len(payload))*100) {
-			return errors.New("DOCX expansion limit exceeded")
+			return errors.New("OOXML expansion limit exceeded")
 		}
 		files[file.Name] = file
 	}
 	contentTypes, err := readArchiveXML(files["[Content_Types].xml"])
-	if err != nil || !xmlAttributePair(contentTypes, "Override", "PartName", "/word/document.xml", "ContentType", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml") {
-		return errors.New("DOCX main content type is missing")
+	if err != nil || !xmlAttributePair(contentTypes, "Override", "PartName", "/"+specification.mainPath, "ContentType", specification.contentType) {
+		return errors.New("OOXML main content type is missing")
 	}
 	relationships, err := readArchiveXML(files["_rels/.rels"])
-	if err != nil || !xmlAttributePair(relationships, "Relationship", "Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "Target", "word/document.xml") {
-		return errors.New("DOCX office relationship is missing")
+	if err != nil || !xmlAttributePairAny(relationships, "Relationship", "Type", specification.relationshipTypes, "Target", specification.mainPath) {
+		return errors.New("OOXML office relationship is missing")
 	}
-	documentXML, err := readArchiveXML(files["word/document.xml"])
-	if err != nil || !validWordDocument(documentXML) {
-		return errors.New("DOCX main Document is invalid")
+	documentXML, err := readArchiveXML(files[specification.mainPath])
+	if err != nil || !validOOXMLDocument(documentXML, specification) {
+		return errors.New("OOXML main Document is invalid")
 	}
 	return nil
 }
 
+func validateDOCX(payload []byte) error {
+	return validateOOXML(payload, ooxmlSpecification{
+		mainPath:          "word/document.xml",
+		contentType:       "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+		rootName:          "document",
+		namespaces:        []string{"http://schemas.openxmlformats.org/wordprocessingml/2006/main", "http://purl.oclc.org/ooxml/wordprocessingml/main"},
+		relationshipTypes: []string{"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument"},
+		requiredChild:     "body",
+	})
+}
+
+func validateXLSX(payload []byte) error {
+	return validateOOXML(payload, ooxmlSpecification{
+		mainPath:          "xl/workbook.xml",
+		contentType:       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+		rootName:          "workbook",
+		namespaces:        []string{"http://schemas.openxmlformats.org/spreadsheetml/2006/main", "http://purl.oclc.org/ooxml/spreadsheetml/main"},
+		relationshipTypes: []string{"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument"},
+		requiredChild:     "sheet",
+	})
+}
+
 func validWordDocument(content string) bool {
-	const wordprocessingML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+	return validOOXMLDocument(content, ooxmlSpecification{
+		rootName:      "document",
+		namespaces:    []string{"http://schemas.openxmlformats.org/wordprocessingml/2006/main", "http://purl.oclc.org/ooxml/wordprocessingml/main"},
+		requiredChild: "body",
+	})
+}
+
+func validOOXMLDocument(content string, specification ooxmlSpecification) bool {
 	decoder := xml.NewDecoder(strings.NewReader(content))
-	rootSeen := false
+	rootSeen, childSeen := false, false
 	for {
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
-			return false
+			return rootSeen && (specification.requiredChild == "" || childSeen)
 		}
 		if err != nil {
 			return false
@@ -326,16 +492,25 @@ func validWordDocument(content string) bool {
 			continue
 		}
 		if !rootSeen {
-			if start.Name.Local != "document" || start.Name.Space != wordprocessingML {
+			if start.Name.Local != specification.rootName || !containsString(specification.namespaces, start.Name.Space) {
 				return false
 			}
 			rootSeen = true
 			continue
 		}
-		if start.Name.Local == "body" && start.Name.Space == wordprocessingML {
+		if start.Name.Local == specification.requiredChild && containsString(specification.namespaces, start.Name.Space) {
+			childSeen = true
+		}
+	}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
 			return true
 		}
 	}
+	return false
 }
 
 func readArchiveXML(file *zip.File) (string, error) {
@@ -365,6 +540,10 @@ func readArchiveXML(file *zip.File) (string, error) {
 }
 
 func xmlAttributePair(content, element, firstName, firstValue, secondName, secondValue string) bool {
+	return xmlAttributePairAny(content, element, firstName, []string{firstValue}, secondName, secondValue)
+}
+
+func xmlAttributePairAny(content, element, firstName string, firstValues []string, secondName, secondValue string) bool {
 	decoder := xml.NewDecoder(strings.NewReader(content))
 	for {
 		token, err := decoder.Token()
@@ -379,7 +558,7 @@ func xmlAttributePair(content, element, firstName, firstValue, secondName, secon
 		for _, attribute := range start.Attr {
 			attributes[attribute.Name.Local] = attribute.Value
 		}
-		if attributes[firstName] == firstValue && attributes[secondName] == secondValue {
+		if containsString(firstValues, attributes[firstName]) && attributes[secondName] == secondValue {
 			return true
 		}
 	}

@@ -2,6 +2,8 @@
 
 let configuration;
 const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
+const EDITOR_TAB_FAILURE_MESSAGE = 'Unable to open a new editor tab. Allow pop-ups for the OA and try again.';
+const VERIFICATION_RETRY_DELAYS_MS = [300, 700];
 const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
 const DEBUG_PREFIX = '[RoadFlow WPS debug]';
 
@@ -69,7 +71,34 @@ function encodedUTF8(value) {
   return btoa(binary);
 }
 
-async function openHostedEditor(editorLaunch) {
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function deriveSourceIdentity(source, expectedFormat) {
+  let result = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
+  for (const delayMilliseconds of VERIFICATION_RETRY_DELAYS_MS) {
+    if (result.ok) return result;
+    debug('document-verification-retry', {
+      sourceURL: debugURL(source),
+      expectedFormat,
+      delayMilliseconds
+    });
+    await delay(delayMilliseconds);
+    result = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
+  }
+  return result;
+}
+
+function closeEditorTab(editorWindow) {
+  try {
+    if (editorWindow && !editorWindow.closed) editorWindow.close();
+  } catch (error) {
+    debug('editor-tab-close-failed', { error: debugError(error) });
+  }
+}
+
+async function openHostedEditor(editorLaunch, editorWindow) {
   debug('editor-launch-start', {
     handoff: editorLaunch?.handoff,
     documentURL: debugURL(editorLaunch?.documentURL),
@@ -77,27 +106,33 @@ async function openHostedEditor(editorLaunch) {
     sourcePath: editorLaunch?.sourcePath
   });
   if (!HANDOFF_ID_PATTERN.test(editorLaunch?.handoff || '')) throw new Error('Editor Handoff is invalid.');
-  const [html, css, javascript] = await Promise.all([
+  const [html, css, javascript, formatCapabilities] = await Promise.all([
     packagedText('hosted-editor.html'),
     packagedText('hosted-editor.css'),
-    packagedText('hosted-editor.js')
+    packagedText('hosted-editor.js'),
+    packagedText('format-capabilities.js')
   ]);
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   const stylesheet = parsed.querySelector('link[rel="stylesheet"]');
-  const editorScript = parsed.querySelector('script[src]');
+  const editorScript = parsed.querySelector('script[src$="editor.js"]') || parsed.querySelector('script[src]');
   if (!stylesheet || !editorScript) throw new Error('Packaged editor shell is invalid.');
   const style = parsed.createElement('style');
   style.textContent = css;
   stylesheet.replaceWith(style);
   const contextScript = parsed.createElement('script');
   contextScript.textContent = `globalThis.RoadFlowEditorContext=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('${encodedUTF8(JSON.stringify(editorLaunch))}'),character=>character.charCodeAt(0))));`;
+  const formatScript = parsed.querySelector('script[src$="format-capabilities.js"]') || parsed.createElement('script');
+  formatScript.removeAttribute('src');
+  formatScript.textContent = formatCapabilities;
+  editorScript.before(formatScript);
   editorScript.before(contextScript);
   editorScript.removeAttribute('src');
   editorScript.textContent = javascript;
   const editorBlob = new Blob([`<!doctype html>${parsed.documentElement.outerHTML}`], { type: 'text/html' });
   const editorURL = URL.createObjectURL(editorBlob);
   debug('editor-blob-created', { size: editorBlob.size, type: editorBlob.type, editorURL });
-  location.replace(editorURL);
+  if (!editorWindow || editorWindow.closed) throw new Error('Editor tab is no longer available.');
+  editorWindow.location.replace(editorURL);
 }
 
 debug('configuration-requested', { pageOrigin: location.origin });
@@ -127,20 +162,23 @@ chrome.storage.onChanged.addListener((changes, area) => {
   });
 });
 
-async function enterPackagedEditor(source, title) {
-  const expectedFormat = /\.docx$/i.test(source.pathname) ? 'docx' : 'doc';
+async function enterPackagedEditor(source, title, editorWindow) {
+  const capability = RoadFlowFormatCapabilities.forPath(source.pathname);
+  if (!capability) throw new Error('Unsupported document format.');
+  const expectedFormat = capability.format;
   debug('document-verification-start', {
     sourceURL: debugURL(source),
     sourcePath: source.pathname,
     expectedFormat
   });
-  const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
+  const identityResult = await deriveSourceIdentity(source, expectedFormat);
   if (!identityResult.ok) {
     debug('document-verification-failed', {
       sourceURL: debugURL(source),
       expectedFormat,
       message: identityResult.message
     });
+    closeEditorTab(editorWindow);
     window.alert(identityResult.message);
     return;
   }
@@ -153,6 +191,7 @@ async function enterPackagedEditor(source, title) {
   });
   const activation = {
     returnURL: location.href,
+    returnMode: 'close',
     sourceURL: source.href,
     title
   };
@@ -173,8 +212,9 @@ async function enterPackagedEditor(source, title) {
     officeSaveURL: debugURL(response?.editorLaunch?.officeSaveURL)
   });
   if (response?.ok && response.editorLaunch) {
-    await openHostedEditor(response.editorLaunch);
+    await openHostedEditor(response.editorLaunch, editorWindow);
   } else {
+    closeEditorTab(editorWindow);
     window.alert(VERIFICATION_FAILURE_MESSAGE);
   }
 }
@@ -185,7 +225,8 @@ window.addEventListener('click', event => {
 
   const rawHref = anchor.getAttribute?.('href') || anchor.href || '';
   const absoluteHref = anchor.href || rawHref;
-  const likelyDocument = /\.docx?(?:[?#]|$)/i.test(rawHref) || /\.docx?(?:[?#]|$)/i.test(absoluteHref);
+  const likelyDocument = RoadFlowFormatCapabilities.isLikelyPath(rawHref) ||
+    RoadFlowFormatCapabilities.isLikelyPath(absoluteHref);
   if (!likelyDocument) return;
 
   let source;
@@ -227,7 +268,7 @@ window.addEventListener('click', event => {
   if (!trustedOriginMatches(location.origin)) reasons.push('page-origin-not-trusted');
   if (!trustedOriginMatches(source.origin)) reasons.push('source-origin-not-trusted');
   if (!/^https?:$/.test(source.protocol)) reasons.push('unsupported-protocol');
-  if (!/\.docx?$/i.test(source.pathname)) reasons.push('unsupported-extension');
+  if (!RoadFlowFormatCapabilities.forPath(source.pathname)) reasons.push('unsupported-extension');
   if (reasons.length > 0) {
     debug('document-link-skipped', {
       reasons,
@@ -239,13 +280,26 @@ window.addEventListener('click', event => {
   }
 
   event.preventDefault();
+  let editorWindow;
+  try {
+    editorWindow = window.open('about:blank', '_blank');
+  } catch (error) {
+    debug('editor-tab-open-failed', { error: debugError(error) });
+  }
+  if (!editorWindow) {
+    debug('editor-tab-open-failed', { reason: 'popup-blocked' });
+    window.alert(EDITOR_TAB_FAILURE_MESSAGE);
+    return;
+  }
+  debug('editor-tab-opened', { pageURL: debugURL(location.href) });
   debug('document-link-intercepted', {
     sourceURL: debugURL(source),
     sourcePath: source.pathname,
-    expectedFormat: /\.docx$/i.test(source.pathname) ? 'docx' : 'doc'
+    expectedFormat: RoadFlowFormatCapabilities.forPath(source.pathname)?.format
   });
-  void enterPackagedEditor(source, anchor.textContent.trim())
+  void enterPackagedEditor(source, anchor.textContent.trim(), editorWindow)
     .catch(error => {
+      closeEditorTab(editorWindow);
       debug('editor-launch-failed', { sourceURL: debugURL(source), error: debugError(error) });
       window.alert(VERIFICATION_FAILURE_MESSAGE);
     });
