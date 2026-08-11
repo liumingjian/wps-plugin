@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 vm.runInThisContext(await readFile(new URL('./zip-core.min.js', import.meta.url), 'utf8'), { filename: 'zip-core.min.js' });
 vm.runInThisContext(await readFile(new URL('./cfb.min.js', import.meta.url), 'utf8'), { filename: 'cfb.min.js' });
+vm.runInThisContext(await readFile(new URL('./format-capabilities.js', import.meta.url), 'utf8'), { filename: 'format-capabilities.js' });
 zip.configure({ useWebWorkers: false });
 
 class TestDOMParser {
@@ -33,6 +34,9 @@ globalThis.DOMParser = TestDOMParser;
 const contentTypes = '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
 const relationships = '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
 const documentXML = '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>';
+const spreadsheetContentTypes = '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>';
+const spreadsheetRelationships = '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+const workbookXML = '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1"/></sheets></workbook>';
 
 async function docx(entries = {}) {
   const writer = new zip.ZipWriter(new zip.Uint8ArrayWriter());
@@ -69,6 +73,52 @@ function doc({ wordDocument = true, validFIB = true, completeFIB = true, tableSt
     CFB.utils.cfb_add(container, 'Workbook', new Uint8Array(512));
   }
   return Uint8Array.from(CFB.write(container, { type: 'buffer', fileType: 'cfb' }));
+}
+
+function record(type, body = new Uint8Array()) {
+  const bytes = new Uint8Array(4 + body.length);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(0, type, true);
+  view.setUint16(2, body.length, true);
+  bytes.set(body, 4);
+  return bytes;
+}
+
+function xls({ workbookStream = true, sheet = true } = {}) {
+  const container = CFB.utils.cfb_new();
+  if (workbookStream) {
+    const bof = new Uint8Array(8);
+    const view = new DataView(bof.buffer);
+    view.setUint16(0, 0x0600, true);
+    view.setUint16(2, 0x0005, true);
+    view.setUint16(4, 0x2013, true);
+    view.setUint16(6, 0x07cd, true);
+    const records = [record(0x0809, bof)];
+    if (sheet) records.push(record(0x0085, new Uint8Array(8)));
+    records.push(record(0x000a));
+    const stream = new Uint8Array(records.reduce((size, value) => size + value.length, 0));
+    let offset = 0;
+    for (const value of records) {
+      stream.set(value, offset);
+      offset += value.length;
+    }
+    CFB.utils.cfb_add(container, 'Workbook', stream);
+  }
+  return Uint8Array.from(CFB.write(container, { type: 'buffer', fileType: 'cfb' }));
+}
+
+async function xlsx(entries = {}) {
+  const writer = new zip.ZipWriter(new zip.Uint8ArrayWriter());
+  const files = {
+    '[Content_Types].xml': spreadsheetContentTypes,
+    '_rels/.rels': spreadsheetRelationships,
+    'xl/workbook.xml': workbookXML,
+    ...entries
+  };
+  for (const [name, contents] of Object.entries(files)) {
+    await writer.add(name, new zip.TextReader(contents));
+  }
+  return writer.close();
 }
 
 const sourceBytes = await docx();
@@ -116,6 +166,9 @@ assert.equal(
   ),
   '/Attachment/UploadFiles/202608/03//测试文档20260803_NHZP84.docx'
 );
+assert.equal(RoadFlowFormatCapabilities.forPath('/documents/Legacy.WPS').format, 'wps');
+assert.equal(RoadFlowFormatCapabilities.forPath('/documents/Legacy.XLS').format, 'xls');
+assert.equal(RoadFlowFormatCapabilities.forPath('/documents/Report.XLSX').format, 'xlsx');
 
 const sourceURL = 'https://oa.example.test/documents/Quarterly%20Report.DOCX?download=1';
 const result = await RoadFlowSourceIdentity.derive(sourceURL, 'docx');
@@ -174,6 +227,86 @@ assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), {
   }
 });
 
+// WPS saveURL_FormData can write a CFB Word document back to a .docx URL.
+// The logical source path remains DOCX, but the saved serialization is still
+// a valid editable Word document and must be accepted on the next open.
+nextResponse = sourceResponse(docBytes, { url: sourceURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Quarterly Report.DOCX',
+    actualFormat: 'docx',
+    byteCount: docBytes.byteLength,
+    sha256: createHash('sha256').update(docBytes).digest('hex')
+  }
+});
+
+const wpsSavedWordBytes = new Uint8Array(await readFile(
+  new URL('../roadflowsimulator/testdata/Acceptance.doc', import.meta.url)
+));
+nextResponse = sourceResponse(wpsSavedWordBytes, { url: sourceURL });
+assert.equal((await RoadFlowSourceIdentity.derive(sourceURL, 'docx')).ok, true);
+
+const wpsURL = 'https://oa.example.test/documents/Legacy.WPS';
+const wpsBytes = doc();
+nextResponse = sourceResponse(wpsBytes, { url: wpsURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(wpsURL, 'wps'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Legacy.WPS',
+    actualFormat: 'wps',
+    byteCount: wpsBytes.byteLength,
+    sha256: createHash('sha256').update(wpsBytes).digest('hex')
+  }
+});
+
+const xlsURL = 'https://oa.example.test/documents/Legacy.XLS';
+const xlsBytes = xls();
+nextResponse = sourceResponse(xlsBytes, { url: xlsURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(xlsURL, 'xls'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Legacy.XLS',
+    actualFormat: 'xls',
+    byteCount: xlsBytes.byteLength,
+    sha256: createHash('sha256').update(xlsBytes).digest('hex')
+  }
+});
+
+const xlsxURL = 'https://oa.example.test/documents/Report.XLSX';
+const xlsxBytes = await xlsx();
+nextResponse = sourceResponse(xlsxBytes, { url: xlsxURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(xlsxURL, 'xlsx'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Report.XLSX',
+    actualFormat: 'xlsx',
+    byteCount: xlsxBytes.byteLength,
+    sha256: createHash('sha256').update(xlsxBytes).digest('hex')
+  }
+});
+
+// WPS may return a legacy Excel CFB payload after saving an XLSX link.
+nextResponse = sourceResponse(xlsBytes, { url: xlsxURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(xlsxURL, 'xlsx'), {
+  ok: true,
+  identity: {
+    sourcePath: '/documents/Report.XLSX',
+    actualFormat: 'xlsx',
+    byteCount: xlsBytes.byteLength,
+    sha256: createHash('sha256').update(xlsBytes).digest('hex')
+  }
+});
+
+for (const [url, format, bytes] of [
+  [wpsURL, 'wps', sourceBytes],
+  [xlsURL, 'xls', doc()],
+  [xlsxURL, 'xlsx', sourceBytes]
+]) {
+  nextResponse = sourceResponse(bytes, { url });
+  assert.deepEqual(await RoadFlowSourceIdentity.derive(url, format), failure);
+}
+
 for (const invalidDOC of [
   doc({ wordDocument: false }),
   doc({ validFIB: false }),
@@ -194,6 +327,12 @@ assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'doc'), failure);
 
 nextResponse = sourceResponse(docBytes, { url: docURL });
 assert.deepEqual(await RoadFlowSourceIdentity.derive(docURL, 'docx'), failure);
+
+nextResponse = sourceResponse(xlsBytes, { url: xlsURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(xlsURL, 'xlsx'), failure);
+
+nextResponse = sourceResponse(xlsxBytes, { url: xlsxURL });
+assert.deepEqual(await RoadFlowSourceIdentity.derive(xlsxURL, 'xls'), failure);
 
 const strictRelationships = relationships.replace(
   'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',

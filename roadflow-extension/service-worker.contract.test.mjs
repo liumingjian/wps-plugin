@@ -29,6 +29,7 @@ globalThis.importScripts = async () => {};
 globalThis.fetch = () => { throw new Error('Direct OA mode must not contact a Gateway.'); };
 vm.runInThisContext(await readFile(new URL('./configuration.js', import.meta.url), 'utf8'), { filename: 'configuration.js' });
 vm.runInThisContext(await readFile(new URL('./source-identity-contract.js', import.meta.url), 'utf8'), { filename: 'source-identity-contract.js' });
+vm.runInThisContext(await readFile(new URL('./format-capabilities.js', import.meta.url), 'utf8'), { filename: 'format-capabilities.js' });
 vm.runInThisContext(await readFile(new URL('./service-worker.js', import.meta.url), 'utf8'), { filename: 'service-worker.js' });
 
 const configuration = { trustedOrigin: 'http://ywsh.yn.srrc.org.cn' };
@@ -51,7 +52,13 @@ const sourceIdentity = {
   byteCount: 4096,
   sha256: 'a'.repeat(64)
 };
-const activation = { returnURL, sourceURL, title: '测试文档20260803_NHZP84.docx', sourceIdentity };
+const activation = {
+  returnURL,
+  returnMode: 'close',
+  sourceURL,
+  title: '测试文档20260803_NHZP84.docx',
+  sourceIdentity
+};
 
 const configurationResponse = await new Promise(resolve => {
   messageListener({ type: 'configuration' }, { url: returnURL, tab: { id: 7 } }, resolve);
@@ -68,6 +75,7 @@ assert.equal(`${launchedDocumentURL.origin}${launchedDocumentURL.pathname}`, sou
 assert.match(launchedDocumentURL.hash, /^#roadflow-handoff=[a-f0-9]{64}$/);
 assert.equal(created.editorLaunch.sourcePath, sourcePath);
 assert.equal(created.editorLaunch.sourceIdentity.sourcePath, sourcePath);
+assert.equal(created.editorLaunch.returnMode, 'close');
 assert.equal(created.editorLaunch.returnURL, returnURL);
 assert.equal(
   new URL(created.editorLaunch.officeSaveURL).pathname,
@@ -76,6 +84,54 @@ assert.equal(
 assert.equal(new URL(created.editorLaunch.officeSaveURL).searchParams.get('fileurl'), sourcePath);
 assert.equal('receiptURL' in created.editorLaunch, false);
 assert.equal('gatewayTemplate' in created.editorLaunch, false);
+assert.equal(created.editorLaunch.editorKind, 'writer');
+
+const frameURL = 'http://ywsh.yn.srrc.org.cn/workflow/form-frame?id=7';
+const nestedCreated = await new Promise(resolve => {
+  messageListener(
+    { type: 'create-editor-handoff', activation: { ...activation, returnURL: frameURL } },
+    { url: frameURL, frameId: 3, tab: { id: 7, url: returnURL } },
+    resolve
+  );
+});
+assert.equal(nestedCreated.ok, true);
+assert.equal(nestedCreated.editorLaunch.returnURL, returnURL);
+
+const nestedWithoutTopURL = await new Promise(resolve => {
+  messageListener(
+    { type: 'create-editor-handoff', activation: { ...activation, returnURL: frameURL } },
+    { url: frameURL, frameId: 3, tab: { id: 7 } },
+    resolve
+  );
+});
+assert.deepEqual(nestedWithoutTopURL, { ok: false });
+
+for (const [format, editorKind] of [
+  ['wps', 'writer'],
+  ['xls', 'spreadsheet'],
+  ['xlsx', 'spreadsheet']
+]) {
+  const formatSourcePath = `/documents/Quarterly Report.${format.toUpperCase()}`;
+  const formatSourceURL = `http://ywsh.yn.srrc.org.cn${formatSourcePath}`;
+  const formatActivation = {
+    returnURL,
+    sourceURL: formatSourceURL,
+    title: `Quarterly Report.${format.toUpperCase()}`,
+    sourceIdentity: {
+      sourcePath: formatSourcePath,
+      actualFormat: format,
+      byteCount: 4096,
+      sha256: 'c'.repeat(64)
+    }
+  };
+  const formatCreated = await new Promise(resolve => {
+    messageListener({ type: 'create-editor-handoff', activation: formatActivation }, { url: returnURL, tab: { id: 7 } }, resolve);
+  });
+  assert.equal(formatCreated.ok, true);
+  assert.equal(formatCreated.editorLaunch.expectedFormat, format);
+  assert.equal(formatCreated.editorLaunch.editorKind, editorKind);
+  assert.equal(formatCreated.editorLaunch.sourcePath, formatSourcePath);
+}
 
 for (const invalid of [
   { activation: { ...activation, sourceIdentity: undefined }, senderURL: returnURL },

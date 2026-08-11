@@ -142,11 +142,11 @@ func doctor(paths setupPaths) (commandResult, error) {
 	wpsVersion := commandVersion("dpkg-query", "-W", "-f=${Version}", "wps-office")
 	checks["qaxbrowserVersion"] = qaxVersion
 	checks["wpsVersion"] = wpsVersion
-	_, manifestErr := os.Stat(filepath.Join(paths.qaxConfig, "NativeMessagingHosts", "com.liumingjian.wps_edit_agent.json"))
-	checks["registered"] = manifestErr == nil
+	registered := validNativeMessagingRegistration(paths)
+	checks["registered"] = registered
 	state := "unverified"
 	message := "Environment is usable but has not matched the designated version matrix."
-	if runtime.GOOS != "linux" || runtime.GOARCH != "arm64" || manifestErr != nil || qaxVersion == "unavailable" || wpsVersion == "unavailable" {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "arm64" || !registered || qaxVersion == "unavailable" || wpsVersion == "unavailable" {
 		state = "action-required"
 		message = "Configure registration on a Kylin V10 ARM64 desktop."
 	} else if strings.Contains(qaxVersion, "1.0.46371.2") && strings.Contains(wpsVersion, "12.1.2.26885.AK.preread.sw") {
@@ -154,6 +154,33 @@ func doctor(paths setupPaths) (commandResult, error) {
 		message = "The designated Kylin, Qaxbrowser, and WPS environment is verified."
 	}
 	return commandResult{State: state, Message: message, AgentVersion: buildVersion, Checks: checks}, nil
+}
+
+func validNativeMessagingRegistration(paths setupPaths) bool {
+	manifestPath := filepath.Join(paths.qaxConfig, "NativeMessagingHosts", "com.liumingjian.wps_edit_agent.json")
+	info, err := os.Lstat(manifestPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	payload, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return false
+	}
+	var manifest struct {
+		Name           string   `json:"name"`
+		Path           string   `json:"path"`
+		Type           string   `json:"type"`
+		AllowedOrigins []string `json:"allowed_origins"`
+	}
+	if err := json.Unmarshal(payload, &manifest); err != nil {
+		return false
+	}
+	wantOrigin := "chrome-extension://" + productionExtensionID + "/"
+	return manifest.Name == "com.liumingjian.wps_edit_agent" &&
+		manifest.Path == paths.hostPath &&
+		manifest.Type == "stdio" &&
+		len(manifest.AllowedOrigins) == 1 &&
+		manifest.AllowedOrigins[0] == wantOrigin
 }
 
 func unregisterUser(paths setupPaths) (commandResult, error) {

@@ -89,7 +89,7 @@ func (gateway *handler) registerEditorHandoff(response http.ResponseWriter, requ
 func (gateway *handler) validEditorHandoff(input editorHandoffRequest) bool {
 	if !handoffPattern.MatchString(input.Handoff) || len(input.Title) == 0 || len(input.Title) > 256 ||
 		input.SourcePath != input.SourceIdentity.SourcePath || input.ExpectedFormat != input.SourceIdentity.ActualFormat ||
-		roadflowoa.WordFormat(input.SourcePath) != input.ExpectedFormat || gateway.documents[input.SourcePath] == "" ||
+		roadflowoa.DocumentFormat(input.SourcePath) != input.ExpectedFormat || gateway.documents[input.SourcePath] == "" ||
 		input.SourceIdentity.ByteCount <= 0 || input.SourceIdentity.ByteCount > roadflowoa.MaxDocumentBytes ||
 		!digestPattern.MatchString(input.SourceIdentity.SHA256) {
 		return false

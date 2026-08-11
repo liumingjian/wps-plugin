@@ -1,13 +1,42 @@
 'use strict';
 
 (() => {
+  const DEBUG_PREFIX = '[RoadFlow WPS debug]';
+
+  function debugURL(value) {
+    try {
+      const parsed = value instanceof URL ? value : new URL(String(value));
+      if (parsed.protocol === 'blob:') return `blob:${parsed.pathname}`;
+      return `${parsed.origin}${parsed.pathname}${parsed.search ? '?[redacted]' : ''}${parsed.hash ? '#[redacted]' : ''}`;
+    } catch {
+      return typeof value === 'string' ? value : undefined;
+    }
+  }
+
+  function debugError(error) {
+    if (error instanceof Error) {
+      return { name: error.name, message: error.message, stack: error.stack };
+    }
+    return { message: String(error) };
+  }
+
+  function debug(event, details = {}) {
+    if (!globalThis.chrome?.runtime?.id || typeof globalThis.console?.info !== 'function') return;
+    console.info(`${DEBUG_PREFIX} ${event}`, details);
+  }
+
   const CONTENT_TYPES_NAMESPACE = 'http://schemas.openxmlformats.org/package/2006/content-types';
   const RELATIONSHIPS_NAMESPACE = 'http://schemas.openxmlformats.org/package/2006/relationships';
   const WORD_NAMESPACES = [
     'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
     'http://purl.oclc.org/ooxml/wordprocessingml/main'
   ];
+  const SPREADSHEET_NAMESPACES = [
+    'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+    'http://purl.oclc.org/ooxml/spreadsheetml/main'
+  ];
   const DOCUMENT_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
+  const SPREADSHEET_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml';
   const OFFICE_DOCUMENT_RELATIONSHIPS = [
     'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',
     'http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument'
@@ -42,18 +71,24 @@
     return document;
   }
 
-  function validatePackageXML(files) {
+  function validatePackageXML(files, specification) {
     const contentTypes = parseXML(files.get('[Content_Types].xml'), 'Types', CONTENT_TYPES_NAMESPACE);
     const documentOverride = [...contentTypes.getElementsByTagNameNS(CONTENT_TYPES_NAMESPACE, 'Override')]
-      .find(entry => entry.getAttribute('PartName') === '/word/document.xml');
-    if (documentOverride?.getAttribute('ContentType') !== DOCUMENT_CONTENT_TYPE) throw new Error('Missing main Document content type');
+      .find(entry => entry.getAttribute('PartName') === `/${specification.mainPath}`);
+    if (documentOverride?.getAttribute('ContentType') !== specification.contentType) {
+      throw new Error('Missing main OOXML content type');
+    }
 
     const relationships = parseXML(files.get('_rels/.rels'), 'Relationships', RELATIONSHIPS_NAMESPACE);
     const mainRelationship = [...relationships.getElementsByTagNameNS(RELATIONSHIPS_NAMESPACE, 'Relationship')]
       .find(entry => OFFICE_DOCUMENT_RELATIONSHIPS.includes(entry.getAttribute('Type')));
-    if (mainRelationship?.getAttribute('Target') !== 'word/document.xml' ||
+    if (mainRelationship?.getAttribute('Target') !== specification.mainPath ||
         mainRelationship.getAttribute('TargetMode') === 'External') throw new Error('Missing main Document relationship');
-    parseXML(files.get('word/document.xml'), 'document', WORD_NAMESPACES);
+    const main = parseXML(files.get(specification.mainPath), specification.rootName, specification.namespaces);
+    if (specification.requiredChild &&
+        main.getElementsByTagNameNS(main.documentElement.namespaceURI, specification.requiredChild).length === 0) {
+      throw new Error(`Missing main ${specification.requiredChild}`);
+    }
   }
 
   function validateArchive(entries) {
@@ -181,15 +216,25 @@
     return bytes;
   }
 
-  function validateDOC(bytes) {
+  function cfbRootStreams(bytes) {
     const container = CFB.parse(bytes);
     const rootPath = container.FullPaths?.[0];
     if (typeof rootPath !== 'string' || !rootPath.endsWith('/')) throw new Error('Invalid CFB root');
-    const rootStream = name => {
-      const index = container.FullPaths.indexOf(`${rootPath}${name}`);
+    const streams = new Map();
+    for (let index = 0; index < (container.FullPaths?.length || 0); index += 1) {
+      const fullPath = container.FullPaths[index];
       const entry = container.FileIndex?.[index];
-      return entry?.type === 2 ? entry : undefined;
-    };
+      if (entry?.type === 2 && typeof fullPath === 'string' && fullPath.startsWith(rootPath)) {
+        const name = fullPath.slice(rootPath.length);
+        if (name && !name.includes('/')) streams.set(name, entry);
+      }
+    }
+    return streams;
+  }
+
+  function validateDOC(bytes) {
+    const rootStreams = cfbRootStreams(bytes);
+    const rootStream = name => rootStreams.get(name);
     const wordDocument = rootStream('WordDocument');
     const contents = wordDocument?.content;
     if (!contents || contents.length < 154) throw new Error('Missing WordDocument FIB');
@@ -218,14 +263,14 @@
     if (!rootStream(tableName)?.content?.length) throw new Error('Missing Word table stream');
   }
 
-  async function validateDOCX(bytes) {
+  async function validateOOXML(bytes, specification) {
     configureZIP();
     const reader = new zip.ZipReader(new zip.Uint8ArrayReader(bytes));
     try {
       const entries = await reader.getEntries();
       validateArchive(entries);
       const entriesByName = new Map(entries.map(entry => [entry.filename, entry]));
-      const requiredNames = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml'];
+      const requiredNames = ['[Content_Types].xml', '_rels/.rels', specification.mainPath];
       if (!requiredNames.every(name => entriesByName.has(name))) throw new Error('Missing OOXML member');
       const requiredNameSet = new Set(requiredNames);
       const files = new Map();
@@ -238,10 +283,106 @@
         if (xmlMember) parseXMLDocument(contents);
         if (retain) files.set(entry.filename, contents);
       }
-      validatePackageXML(files);
+      validatePackageXML(files, specification);
     } finally {
       await reader.close();
     }
+  }
+
+  async function validateDOCX(bytes) {
+    return validateOOXML(bytes, {
+      mainPath: 'word/document.xml',
+      contentType: DOCUMENT_CONTENT_TYPE,
+      rootName: 'document',
+      namespaces: WORD_NAMESPACES
+    });
+  }
+
+  async function validateDOCXCompatible(bytes) {
+    try {
+      await validateDOCX(bytes);
+    } catch (ooxmlError) {
+      // WPS saveURL_FormData may serialize a DOCX edit as a legacy CFB Word
+      // document while the OA keeps the original .docx path.
+      debug('source-serialization-fallback', {
+        logicalFormat: 'docx',
+        serializationFormat: 'doc',
+        ooxmlError: debugError(ooxmlError)
+      });
+      validateDOC(bytes);
+    }
+  }
+
+  async function validateXLSX(bytes) {
+    return validateOOXML(bytes, {
+      mainPath: 'xl/workbook.xml',
+      contentType: SPREADSHEET_CONTENT_TYPE,
+      rootName: 'workbook',
+      namespaces: SPREADSHEET_NAMESPACES,
+      requiredChild: 'sheet'
+    });
+  }
+
+  async function validateXLSXCompatible(bytes) {
+    try {
+      await validateXLSX(bytes);
+    } catch (ooxmlError) {
+      // Keep XLSX links usable when WPS returns a valid legacy Excel CFB file.
+      debug('source-serialization-fallback', {
+        logicalFormat: 'xlsx',
+        serializationFormat: 'xls',
+        ooxmlError: debugError(ooxmlError)
+      });
+      validateXLS(bytes);
+    }
+  }
+
+  function validateXLS(bytes) {
+    const rootStreams = cfbRootStreams(bytes);
+    const workbook = rootStreams.get('Workbook') || rootStreams.get('Book');
+    const contents = workbook?.content;
+    if (!contents || contents.length < 12) throw new Error('Missing Workbook stream');
+
+    const bytesView = Uint8Array.from(contents);
+    const view = new DataView(bytesView.buffer);
+    const firstRecordType = view.getUint16(0, true);
+    const firstRecordSize = view.getUint16(2, true);
+    if (firstRecordType !== 0x0809 || firstRecordSize < 4 || 4 + firstRecordSize > bytesView.length ||
+        view.getUint16(6, true) !== 0x0005) {
+      throw new Error('Invalid Workbook BOF');
+    }
+
+    let offset = 0;
+    let hasSheet = false;
+    let hasGlobalsEOF = false;
+    while (offset + 4 <= bytesView.length) {
+      const recordType = view.getUint16(offset, true);
+      const recordSize = view.getUint16(offset + 2, true);
+      const nextOffset = offset + 4 + recordSize;
+      if (nextOffset > bytesView.length) throw new Error('Truncated Workbook record');
+      if (recordType === 0x0085) hasSheet = true;
+      if (recordType === 0x000a) {
+        if (hasSheet) {
+          hasGlobalsEOF = true;
+          break;
+        }
+      }
+      offset = nextOffset;
+    }
+    if (!hasSheet || !hasGlobalsEOF) throw new Error('Workbook sheets are missing');
+  }
+
+  function validateWPS(bytes) {
+    try {
+      validateDOC(bytes);
+      return;
+    } catch {}
+
+    const rootStreams = cfbRootStreams(bytes);
+    const proprietaryWriterStream = [...rootStreams.entries()].some(([name, entry]) =>
+      entry?.content?.length && /^(?:WPS|WPSDocument|Document|Content|Contents|BodyText)$/i.test(name)
+    );
+    if (!proprietaryWriterStream) throw new Error('Invalid WPS container');
   }
 
   const SHA256_INITIAL = [
@@ -337,47 +478,95 @@
     const subtle = globalThis.crypto?.subtle;
     if (typeof subtle?.digest === 'function') {
       try {
-        return new Uint8Array(await subtle.digest('SHA-256', bytes));
-      } catch {}
+        const digest = new Uint8Array(await subtle.digest('SHA-256', bytes));
+        debug('source-hash-complete', { method: 'crypto.subtle', byteCount: bytes.byteLength });
+        return digest;
+      } catch (error) {
+        debug('source-hash-native-failed', { error: debugError(error) });
+      }
     }
-    return sha256Fallback(bytes);
+    const digest = sha256Fallback(bytes);
+    debug('source-hash-complete', { method: 'javascript-fallback', byteCount: bytes.byteLength });
+    return digest;
   }
 
   async function derive(sourceURL, expectedFormat) {
+    debug('source-validation-start', {
+      sourceURL: debugURL(sourceURL),
+      expectedFormat
+    });
     try {
       const source = new URL(sourceURL);
-      if (!['doc', 'docx'].includes(expectedFormat) ||
-          !new RegExp(`\\.${expectedFormat}$`, 'i').test(source.pathname)) throw new Error('Format mismatch');
+      const capability = RoadFlowFormatCapabilities.forPath(source.pathname);
+      if (!capability || capability.format !== expectedFormat) throw new Error('Format mismatch');
       const requestURL = new URL(source.href);
       requestURL.hash = '';
+      debug('source-fetch-start', {
+        sourceURL: debugURL(source),
+        requestURL: debugURL(requestURL),
+        credentials: 'include',
+        cache: 'no-store',
+        redirect: 'manual'
+      });
       const response = await fetch(requestURL.href, {
         cache: 'no-store',
         credentials: 'include',
         redirect: 'manual'
+      });
+      debug('source-fetch-response', {
+        requestURL: debugURL(requestURL),
+        ok: response.ok,
+        status: response.status,
+        type: response.type,
+        redirected: response.redirected,
+        responseURL: debugURL(response.url)
       });
       if (!response.ok || response.redirected || response.type === 'opaqueredirect' || response.url !== requestURL.href) {
         throw new Error('Source response rejected');
       }
 
       const declaredSize = response.headers.get('Content-Length');
+      debug('source-response-metadata', {
+        contentLength: declaredSize,
+        compressedLimit: LIMITS.compressedBytes
+      });
       if (declaredSize !== null && (!/^\d+$/.test(declaredSize) || Number(declaredSize) > LIMITS.compressedBytes)) {
         throw new Error('Compressed size limit exceeded');
       }
       const bytes = await readBoundedSource(response);
-      if (expectedFormat === 'docx') await validateDOCX(bytes);
-      else validateDOC(bytes);
+      debug('source-bytes-read', { byteCount: bytes.byteLength });
+      if (capability.validation === 'docx') await validateDOCXCompatible(bytes);
+      else if (capability.validation === 'doc') validateDOC(bytes);
+      else if (capability.validation === 'wps') validateWPS(bytes);
+      else if (capability.validation === 'xls') validateXLS(bytes);
+      else if (capability.validation === 'xlsx') await validateXLSXCompatible(bytes);
+      else throw new Error('Unsupported source validator');
+      debug('source-structure-valid', { sourcePath: RoadFlowSourceIdentityContract.sourcePath(source), expectedFormat });
 
       const digest = await sha256Digest(bytes);
+      const identity = {
+        sourcePath: RoadFlowSourceIdentityContract.sourcePath(source),
+        actualFormat: expectedFormat,
+        byteCount: bytes.byteLength,
+        sha256: Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
+      };
+      debug('source-validation-succeeded', {
+        sourceURL: debugURL(source),
+        sourcePath: identity.sourcePath,
+        actualFormat: identity.actualFormat,
+        byteCount: identity.byteCount,
+        sha256: identity.sha256
+      });
       return {
         ok: true,
-        identity: {
-          sourcePath: RoadFlowSourceIdentityContract.sourcePath(source),
-          actualFormat: expectedFormat,
-          byteCount: bytes.byteLength,
-          sha256: Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('')
-        }
+        identity
       };
     } catch (error) {
+      debug('source-validation-failed', {
+        sourceURL: debugURL(sourceURL),
+        expectedFormat,
+        error: debugError(error)
+      });
       if (globalThis.chrome?.runtime?.id) console.error('RoadFlow source validation failed:', error);
       return { ok: false, message: FAILURE_MESSAGE };
     }

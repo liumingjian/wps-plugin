@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-version=${VERSION:-1.0.0}
+version=${VERSION:-1.0.1}
 export PACKAGE_NAME="Local WPS Editing"
 export VERSION="$version"
 export OUTPUT=${OUTPUT:-"$repo/dist/release/local-wps-editing-$version.crx"}

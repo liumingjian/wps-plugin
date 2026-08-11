@@ -9,11 +9,13 @@
   "background": { "service_worker": "service-worker.js" },
   "content_scripts": [{
     "matches": ["http://*/*", "https://*/*"],
-    "js": ["zip-core.min.js", "cfb.min.js", "source-identity-contract.js", "source-identity.js", "content.js"],
-    "run_at": "document_start"
+    "js": ["zip-core.min.js", "cfb.min.js", "format-capabilities.js", "source-identity-contract.js", "source-identity.js", "content.js"],
+    "run_at": "document_start",
+    "all_frames": true,
+    "match_about_blank": true
   }],
   "web_accessible_resources": [{
-    "resources": ["hosted-editor.html", "hosted-editor.css", "hosted-editor.js"],
+    "resources": ["format-capabilities.js", "hosted-editor.html", "hosted-editor.css", "hosted-editor.js"],
     "matches": ["http://*/*", "https://*/*"]
   }],
   "action": { "default_title": "RoadFlow WPS readiness", "default_popup": "readiness.html" },

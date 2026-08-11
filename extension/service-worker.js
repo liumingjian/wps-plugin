@@ -154,13 +154,17 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     return true;
   }
   if (request?.type === 'trust-origin') {
-    chrome.tabs.query({ active: true, currentWindow: true }).then(async tabs => {
-      const origin = actualOrigin({ url: tabs[0]?.url });
-      if (!origin) return respond({ ok: false });
+    if (sender.url !== chrome.runtime.getURL('popup.html') || !Number.isInteger(request.tabId)) {
+      respond({ ok: false });
+      return false;
+    }
+    chrome.tabs.get(request.tabId).then(async tab => {
+      const origin = actualOrigin({ url: tab?.url });
+      if (!origin || origin !== request.origin) return respond({ ok: false });
       const origins = [...new Set([...(await trustedOrigins()), origin])];
       await chrome.storage.local.set({ trustedOrigins: origins });
       respond({ ok: true, origin });
-    });
+    }).catch(() => respond({ ok: false }));
     return true;
   }
   if (request?.type === 'task-command' && typeof request.taskId === 'string') {

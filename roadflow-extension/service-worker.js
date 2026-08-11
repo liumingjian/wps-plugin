@@ -1,6 +1,30 @@
 'use strict';
 
-importScripts('configuration.js', 'source-identity-contract.js');
+importScripts('configuration.js', 'source-identity-contract.js', 'format-capabilities.js');
+
+const DEBUG_PREFIX = '[RoadFlow WPS debug]';
+
+function debugURL(value) {
+  try {
+    const parsed = value instanceof URL ? value : new URL(String(value));
+    if (parsed.protocol === 'blob:') return `blob:${parsed.pathname}`;
+    return `${parsed.origin}${parsed.pathname}${parsed.search ? '?[redacted]' : ''}${parsed.hash ? '#[redacted]' : ''}`;
+  } catch {
+    return typeof value === 'string' ? value : undefined;
+  }
+}
+
+function debugError(error) {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message, stack: error.stack };
+  }
+  return { message: String(error) };
+}
+
+function debug(event, details = {}) {
+  if (typeof globalThis.console?.info !== 'function') return;
+  console.info(`${DEBUG_PREFIX} ${event}`, details);
+}
 
 function randomHex(byteCount) {
   const bytes = crypto.getRandomValues(new Uint8Array(byteCount));
@@ -10,11 +34,28 @@ function randomHex(byteCount) {
 async function configuredIntegration() {
   const stored = await chrome.storage.local.get(RoadFlowConfiguration.STORAGE_KEY);
   const result = RoadFlowConfiguration.validate(stored[RoadFlowConfiguration.STORAGE_KEY]);
+  debug('worker-configuration-read', {
+    valid: result.ok,
+    trustedOrigin: result.ok ? result.value.trustedOrigin : undefined
+  });
   return result.ok ? result.value : undefined;
 }
 
 function senderOrigin(sender) {
   try { return new URL(sender?.url).origin; } catch { return undefined; }
+}
+
+function returnURLForSender(activation, sender) {
+  if (typeof activation?.returnURL !== 'string' || activation.returnURL !== sender?.url) return undefined;
+  const nestedFrame = Number.isInteger(sender?.frameId) && sender.frameId !== 0;
+  const returnURL = nestedFrame ? sender.tab?.url : sender.url;
+  try {
+    const parsed = new URL(returnURL);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return undefined;
+  } catch {
+    return undefined;
+  }
+  return returnURL;
 }
 
 async function configurationFor(sender) {
@@ -34,9 +75,11 @@ function editorLaunch(handoff, context) {
   documentURL.hash = `roadflow-handoff=${handoff}`;
   return Object.freeze({
     documentURL: documentURL.href,
+    editorKind: context.capability.editorKind,
     expectedFormat: context.expectedFormat,
     handoff,
     officeSaveURL: officeSaveURL.href,
+    returnMode: context.returnMode,
     returnURL: context.returnURL,
     sourceIdentity: context.sourceIdentity,
     sourcePath: context.sourcePath,
@@ -46,24 +89,29 @@ function editorLaunch(handoff, context) {
 
 async function createEditorHandoff(activation, sender) {
   const configuration = await configuredIntegration();
-  if (!configuration || !sender?.tab || sender.url !== activation?.returnURL ||
-      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender))) return { ok: false };
+  const returnURL = returnURLForSender(activation, sender);
+  const returnMode = activation?.returnMode || 'navigate';
+  if (!configuration || !sender?.tab || !returnURL ||
+      !['navigate', 'close'].includes(returnMode) ||
+      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin(sender)) ||
+      !RoadFlowConfiguration.trustsOrigin(configuration, senderOrigin({ url: returnURL }))) return { ok: false };
 
   let source;
   try { source = new URL(activation.sourceURL); } catch { return { ok: false }; }
   const sourcePath = RoadFlowSourceIdentityContract.sourcePath(source);
-  if (!sourcePath || !RoadFlowConfiguration.trustsOrigin(configuration, source.origin) ||
-      !/^https?:$/.test(source.protocol) || !/\.docx?$/i.test(sourcePath)) {
+  const capability = RoadFlowFormatCapabilities.forPath(sourcePath);
+  if (!sourcePath || !capability || !RoadFlowConfiguration.trustsOrigin(configuration, source.origin) ||
+      !/^https?:$/.test(source.protocol)) {
     return { ok: false };
   }
-  const expectedFormat = /\.docx$/i.test(sourcePath) ? 'docx' : 'doc';
+  const expectedFormat = capability.format;
   const sourceIdentity = RoadFlowSourceIdentityContract.validate(
     activation.sourceIdentity, sourcePath, expectedFormat
   );
   if (!sourceIdentity) return { ok: false };
 
   // In all-origin mode the OA page remains the owner of its OfficeSave endpoint.
-  const trustedOrigin = configuration.trustedOrigin || senderOrigin(sender);
+  const trustedOrigin = configuration.trustedOrigin || senderOrigin({ url: returnURL });
 
   const encodedFilename = source.pathname.slice(source.pathname.lastIndexOf('/') + 1);
   let filename = encodedFilename;
@@ -75,11 +123,13 @@ async function createEditorHandoff(activation, sender) {
   return {
     ok: true,
     editorLaunch: editorLaunch(handoff, {
-      returnURL: sender.url,
+      returnURL,
       trustedOrigin,
       sourceURL: source.href,
       sourcePath,
       title,
+      returnMode,
+      capability,
       expectedFormat,
       sourceIdentity
     })
@@ -87,33 +137,76 @@ async function createEditorHandoff(activation, sender) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
+  debug('worker-message-received', {
+    type: request?.type,
+    senderURL: debugURL(sender?.url),
+    senderTabId: sender?.tab?.id
+  });
   if (request?.type === 'configuration') {
-    configurationFor(sender).then(respond).catch(() => respond({ ok: false }));
+    configurationFor(sender).then(result => {
+      debug('worker-configuration-response', {
+        ok: Boolean(result?.ok),
+        trustedOrigin: result?.configuration?.trustedOrigin,
+        senderURL: debugURL(sender?.url)
+      });
+      respond(result);
+    }).catch(error => {
+      debug('worker-configuration-failed', { error: debugError(error) });
+      respond({ ok: false });
+    });
     return true;
   }
   if (request?.type === 'create-editor-handoff') {
-    createEditorHandoff(request.activation, sender).then(respond).catch(() => respond({ ok: false }));
+    debug('worker-handoff-request', {
+      senderURL: debugURL(sender?.url),
+      returnURL: debugURL(request.activation?.returnURL),
+      sourceURL: debugURL(request.activation?.sourceURL),
+      sourcePath: request.activation?.sourceIdentity?.sourcePath
+    });
+    createEditorHandoff(request.activation, sender).then(result => {
+      debug('worker-handoff-response', {
+        ok: Boolean(result?.ok),
+        handoff: result?.editorLaunch?.handoff,
+        documentURL: debugURL(result?.editorLaunch?.documentURL),
+        officeSaveURL: debugURL(result?.editorLaunch?.officeSaveURL)
+      });
+      respond(result);
+    }).catch(error => {
+      debug('worker-handoff-failed', { error: debugError(error) });
+      respond({ ok: false });
+    });
     return true;
   }
   if (request?.type !== 'apply-configuration') return false;
   if (sender.url !== chrome.runtime.getURL('options.html')) {
+    debug('worker-configuration-rejected', { reason: 'unauthorized-sender', senderURL: debugURL(sender?.url) });
     respond({ ok: false, message: 'Configuration request was not authorized.' });
     return false;
   }
 
   const result = RoadFlowConfiguration.validate(request.configuration);
   if (!result.ok) {
+    debug('worker-configuration-rejected', { reason: 'invalid-configuration', message: result.message });
     respond(result);
     return false;
   }
   const matches = RoadFlowConfiguration.permissionPatterns(result.value);
+  debug('worker-configuration-permission-check', {
+    trustedOrigin: result.value.trustedOrigin,
+    requestedPatterns: matches
+  });
   chrome.permissions.contains({ origins: matches }).then(async granted => {
     if (!granted) {
+      debug('worker-configuration-rejected', { reason: 'permission-not-granted', requestedPatterns: matches });
       respond({ ok: false, message: 'Trusted OA Origin access was not granted.' });
       return;
     }
     await chrome.storage.local.set({ [RoadFlowConfiguration.STORAGE_KEY]: result.value });
+    debug('worker-configuration-saved', { trustedOrigin: result.value.trustedOrigin });
     respond({ ok: true, configuration: result.value });
-  }).catch(() => respond({ ok: false, message: 'Configuration could not be applied.' }));
+  }).catch(error => {
+    debug('worker-configuration-failed', { error: debugError(error) });
+    respond({ ok: false, message: 'Configuration could not be applied.' });
+  });
   return true;
 });

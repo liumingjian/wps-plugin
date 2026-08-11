@@ -1,8 +1,16 @@
 'use strict';
 
+const DEBUG_PREFIX = '[RoadFlow WPS debug]';
+
+function debug(event, details = {}) {
+  if (typeof globalThis.console?.info !== 'function') return;
+  console.info(`${DEBUG_PREFIX} ${event}`, details);
+}
+
 function evaluate(configuration, environment) {
   const validation = RoadFlowConfiguration.validate(configuration);
   if (!validation.ok) {
+    debug('readiness-evaluated', { state: 'missing-configuration', npapiAvailable: environment.npapiAvailable });
     return Object.freeze({
       state: 'missing-configuration',
       title: 'Configuration required',
@@ -10,12 +18,18 @@ function evaluate(configuration, environment) {
     });
   }
   if (!environment.npapiAvailable) {
+    debug('readiness-evaluated', { state: 'wps-npapi-unavailable', npapiAvailable: false });
     return Object.freeze({
       state: 'wps-npapi-unavailable',
       title: 'WPS or browser plugin unavailable',
       guidance: 'Verify the designated WPS installation and enable its browser plugin and NPAPI support in Qaxbrowser, then restart the browser.'
     });
   }
+  debug('readiness-evaluated', {
+    state: 'ready',
+    npapiAvailable: true,
+    trustedOrigin: validation.value.trustedOrigin
+  });
   return Object.freeze({
     state: 'ready',
     title: 'Environment ready',
@@ -36,6 +50,13 @@ function detectEnvironment(wpsObject, browserNavigator) {
     // A blocked plugin object can throw while exposing its automation API.
   }
   const npapiAvailable = pluginAdvertised && Boolean(application) && ['function', 'object'].includes(typeof application);
+  debug('readiness-environment-detected', {
+    pluginAdvertised,
+    applicationType: typeof application,
+    npapiAvailable,
+    pluginCount: plugins.length,
+    wpsMimeType: Boolean(mimeType)
+  });
   return Object.freeze({ npapiAvailable });
 }
 
@@ -60,16 +81,21 @@ if (typeof document !== 'undefined') {
   document.body.append(probe);
 
   chrome.storage.local.get(RoadFlowConfiguration.STORAGE_KEY).then(async stored => {
+    debug('readiness-check-started', {
+      trustedOrigin: stored[RoadFlowConfiguration.STORAGE_KEY]?.trustedOrigin
+    });
     let environment = detectEnvironment(probe, navigator);
     for (let attempt = 0; !environment.npapiAvailable && attempt < 20; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 250));
       environment = detectEnvironment(probe, navigator);
     }
     const result = evaluate(stored[RoadFlowConfiguration.STORAGE_KEY], environment);
+    debug('readiness-check-completed', { state: result.state });
     document.body.dataset.readiness = result.state;
     title.textContent = result.title;
     guidance.textContent = result.guidance;
   }).catch(() => {
+    debug('readiness-check-failed');
     title.textContent = 'Readiness unavailable';
     guidance.textContent = 'Open extension settings and verify this browser profile configuration.';
   });

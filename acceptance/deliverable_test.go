@@ -132,6 +132,42 @@ func TestProductionUserSetupIsIdempotentAndDeactivationRetainsRecoveryState(t *t
 	}
 }
 
+func TestDoctorRequiresExactProductionRegistration(t *testing.T) {
+	repo := repoRoot(t)
+	root := t.TempDir()
+	qaxConfig := filepath.Join(root, "qaxbrowser")
+	manifestDir := filepath.Join(qaxConfig, "NativeMessagingHosts")
+	if err := os.MkdirAll(manifestDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{
+  "name": "com.liumingjian.wps_edit_agent",
+  "path": "/tmp/obsolete-native-host",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://mjjoapeohdfkepmocpahbimmmenlfdcb/"]
+}`
+	if err := os.WriteFile(filepath.Join(manifestDir, "com.liumingjian.wps_edit_agent.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command("go", "run", "./cmd/native-host", "doctor", "--json", "--qax-config", qaxConfig, "--host-path", "/usr/lib/local-wps-editing/native-host")
+	command.Dir = repo
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("Doctor failed: %v", err)
+	}
+	var result struct {
+		State  string         `json:"state"`
+		Checks map[string]any `json:"checks"`
+	}
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatal(err)
+	}
+	if registered, _ := result.Checks["registered"].(bool); registered || result.State != "action-required" {
+		t.Fatalf("Doctor accepted obsolete registration: %+v", result)
+	}
+}
+
 func fileModeAt(t *testing.T, path string) os.FileMode {
 	t.Helper()
 	info, err := os.Stat(path)
