@@ -2,6 +2,7 @@
 
 const HANDOFF_PATTERN = /^[a-f0-9]{64}$/;
 const DEBUG_PREFIX = '[RoadFlow WPS debug]';
+const ftpOfficeEditor = globalThis.FtpOfficeEditor;
 const title = document.querySelector('#document-title');
 const sourceLabel = document.querySelector('#source-label');
 const status = document.querySelector('#editor-status');
@@ -35,7 +36,7 @@ function debugError(error) {
 }
 
 function debug(event, details = {}) {
-  if (typeof globalThis.console?.info !== 'function') return;
+  if (ftpOfficeEditor || typeof globalThis.console?.info !== 'function') return;
   console.info(`${DEBUG_PREFIX} ${event}`, details);
 }
 
@@ -278,6 +279,30 @@ function showFailure(error) {
 
 async function enterEditor() {
   debug('editor-context-read-start', { location: debugURL(location.href) });
+  const context = ftpOfficeEditor
+    ? ftpOfficeEditor.launch(globalThis.FtpOfficePermit)
+    : await readRoadFlowContext();
+  currentContext = context;
+  title.textContent = context.title;
+  sourceLabel.textContent = context.sourcePath || '';
+  if (ftpOfficeEditor && context.editorKind === 'spreadsheet') status.textContent = '正在打开表格';
+  if (ftpOfficeEditor) await ftpOfficeEditor.checkDelivery(context.deliveryURL, false);
+  mountWPS();
+  application = await waitForApplication();
+  debug('wps-open-document-start', { documentURL: debugURL(context.documentURL), readOnly: false });
+  if (openOfficeFile() === false && ftpOfficeEditor) throw new Error('WPS 无法打开文件');
+  debug('wps-open-document-called', { documentURL: debugURL(context.documentURL), editorKind: context.editorKind });
+  await waitForActiveOfficeFile();
+  if (ftpOfficeEditor) await ftpOfficeEditor.checkDelivery(context.deliveryURL, true);
+  enableRevisionTracking();
+  host.className = 'unlocked';
+  editorState = 'editable';
+  status.textContent = context.editorKind === 'spreadsheet' ? '表格可编辑' : '正文可编辑';
+  saveButton.disabled = false;
+  returnButton.disabled = false;
+}
+
+async function readRoadFlowContext() {
   const handoff = globalThis.RoadFlowEditorContext?.handoff || handoffFromLocation();
   if (!handoff) throw new Error('编辑交接参数无效');
   let candidate = globalThis.RoadFlowEditorContext;
@@ -288,7 +313,6 @@ async function enterEditor() {
   }
   const context = validatedContext(candidate, handoff);
   if (!context) throw new Error('编辑交接内容无效');
-  currentContext = context;
   debug('editor-context-validated', {
     handoff: context.handoff,
     sourcePath: context.sourcePath,
@@ -299,20 +323,7 @@ async function enterEditor() {
     sourceByteCount: context.sourceIdentity.byteCount,
     sourceSHA256: context.sourceIdentity.sha256
   });
-  title.textContent = context.title;
-  sourceLabel.textContent = context.sourcePath;
-  mountWPS();
-  application = await waitForApplication();
-  debug('wps-open-document-start', { documentURL: debugURL(context.documentURL), readOnly: false });
-  openOfficeFile();
-  debug('wps-open-document-called', { documentURL: debugURL(context.documentURL), editorKind: context.editorKind });
-  await waitForActiveOfficeFile();
-  enableRevisionTracking();
-  host.className = 'unlocked';
-  editorState = 'editable';
-  status.textContent = context.editorKind === 'spreadsheet' ? '表格可编辑' : '正文可编辑';
-  saveButton.disabled = false;
-  returnButton.disabled = false;
+  return context;
 }
 
 function spreadsheetSaveResultAccepted(result) {
@@ -379,7 +390,7 @@ function returnToOriginalPage() {
     returnURL: debugURL(currentContext?.returnURL),
     editorState
   });
-  if (currentContext?.returnMode === 'close') {
+  if (ftpOfficeEditor || currentContext?.returnMode === 'close') {
     try { window.opener?.focus?.(); } catch (error) { debug('opener-focus-failed', { error: debugError(error) }); }
     window.close();
     return;
@@ -388,13 +399,18 @@ function returnToOriginalPage() {
 }
 
 function returnToOA() {
-  if (!currentContext || ['opening', 'overwriting'].includes(editorState)) return;
-  if (editorState === 'overwrite-failed' && !confirm('保存失败。放弃当前修改并返回 OA？')) return;
+  if ((!ftpOfficeEditor && !currentContext) || ['opening', 'overwriting'].includes(editorState)) return;
+  const discardMessage = ftpOfficeEditor ? '保存失败。放弃当前修改并返回文件列表？' : '保存失败。放弃当前修改并返回 OA？';
+  if (editorState === 'overwrite-failed' && !confirm(discardMessage)) return;
   returnToOriginalPage();
 }
 
 function requestReverification() {
-  if (!currentContext) return;
+  if (!currentContext && !ftpOfficeEditor) return;
+  if (ftpOfficeEditor) {
+    returnToOriginalPage();
+    return;
+  }
   debug('reverification-requested', { returnURL: debugURL(currentContext.returnURL) });
   retryButton.disabled = true;
   status.textContent = '正在返回 OA，请重新打开文档';

@@ -449,3 +449,87 @@ for (const viewport of [
     }
   });
 }
+
+for (const { name, format, editable, mimeType, saveCalls, deliveryRejected } of [
+  { name: 'opens and saves DOCX', format: 'docx', editable: '正文可编辑', mimeType: 'application/x-wps', saveCalls: 'overwriteCalls' },
+  { name: 'opens and saves XLSX', format: 'xlsx', editable: '表格可编辑', mimeType: 'application/x-et', saveCalls: 'spreadsheetSaveCalls' },
+  { name: 'keeps saving disabled when delivery is rejected', format: 'docx', deliveryRejected: true }
+]) {
+  test(`ftp-master ${name}`, async ({ context, page }) => {
+    const origin = 'http://ftp.example.test';
+    const permitId = 'c'.repeat(48);
+    const base = `/api/office/permits/${permitId}`;
+    const permit = {
+      versionId: 23, permitId, format, title: `报告.${format}`,
+      documentUrl: `${base}/document/Report.${format}`,
+      deliveryCheckUrl: `${base}/delivery`, saveUrl: `${base}/save`
+    };
+    let deliveryChecks = 0;
+    const editorKind = format === 'xlsx' ? 'spreadsheet' : 'writer';
+    await context.addInitScript(installWPSBoundary, { editorKind });
+    await context.addInitScript(origin => {
+      globalThis.FtpOfficeOrigin = origin;
+      Object.defineProperty(navigator, 'mimeTypes', { value: { namedItem: () => ({}) } });
+      Object.defineProperty(globalThis, 'chrome', { value: { runtime: {
+        getManifest: () => ({ version: '0.1.0' }),
+        getURL: name => `${origin}/assets/${name}`
+      } } });
+    }, origin);
+    const assets = {
+      'content.js': '../ftp-master-extension/content.js',
+      'ftp-editor.js': '../ftp-master-extension/ftp-editor.js',
+      'hosted-editor.html': './hosted-editor.html',
+      'hosted-editor.css': './hosted-editor.css',
+      'hosted-editor.js': './hosted-editor.js',
+      'format-capabilities.js': './format-capabilities.js'
+    };
+    await context.route(`${origin}/**`, async route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/') {
+        await route.fulfill({ contentType: 'text/html; charset=utf-8', body: `<a href="/api/files/7/office-edits"
+          data-ftp-office-edit="1" data-ftp-office-version="23">在线编辑</a>
+          <script src="/assets/content.js"></script>` });
+      } else if (path === '/api/files/7/office-edits') {
+        expect(route.request().method()).toBe('POST');
+        expect(route.request().postDataJSON()).toEqual({ versionId: 23 });
+        await route.fulfill({ status: 201, json: permit });
+      } else if (path === permit.deliveryCheckUrl) {
+        deliveryChecks += 1;
+        if (deliveryRejected && deliveryChecks === 2) await route.fulfill({ status: 401 });
+        else await route.fulfill({ json: { delivered: deliveryChecks === 2 } });
+      } else if (path.startsWith('/assets/') && Object.hasOwn(assets, path.slice(8))) {
+        const name = path.slice(8);
+        await route.fulfill({
+          contentType: name.endsWith('.js') ? 'text/javascript' : 'text/plain',
+          body: await readFile(new URL(assets[name], import.meta.url))
+        });
+      } else await route.fulfill({ status: 404 });
+    });
+    await page.goto(origin);
+    await expect(page.locator('html')).toHaveAttribute('data-ftp-office-plugin', '0.1.0');
+    const popupCreated = page.waitForEvent('popup');
+    await page.getByRole('link', { name: '在线编辑' }).click();
+    const popup = await popupCreated;
+    if (deliveryRejected) {
+      await expect(popup.locator('#editor-status')).toContainText('无法确认 WPS 收到所选文件');
+      await expect(popup.locator('#wps-surface')).toHaveCount(0);
+      await expect(popup.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+      expect(await popup.evaluate(() => globalThis.__roadFlowObservations.overwriteCalls)).toEqual([]);
+      return;
+    }
+    await expect(popup.locator('#editor-status')).toHaveText(editable);
+    await expect(popup.locator('#wps-surface')).toHaveAttribute('type', mimeType);
+    expect(deliveryChecks).toBe(2);
+    const openCalls = format === 'xlsx' ? 'workbookOpenCalls' : 'openCalls';
+    expect(await popup.evaluate(key => globalThis.__roadFlowObservations[key][0].url, openCalls))
+      .toBe(`${origin}${permit.documentUrl}`);
+    await popup.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(popup.locator('#editor-status')).toHaveText('已保存');
+    expect(await popup.evaluate(key => globalThis.__roadFlowObservations[key][0].url, saveCalls))
+      .toBe(`${origin}${permit.saveUrl}`);
+    const returned = popup.waitForEvent('close');
+    await popup.getByRole('button', { name: '返回文件列表' }).click();
+    await returned;
+    await expect(page.getByRole('link', { name: '在线编辑' })).toBeVisible();
+  });
+}
