@@ -11,17 +11,31 @@ const identity = {
   sha256: 'e'.repeat(64)
 };
 const editorURL = `chrome-extension://fixed/editor.html?handoff=${handoffID}`;
-for (const outcome of ['success', 'failure', 'exception', 'timeout']) {
+for (const outcome of ['success', 'failure', 'exception', 'timeout', 'handoff-exception']) {
 const messages = [];
 const sourceReads = [];
+const statuses = [];
 let replacementURL;
 
 const context = vm.createContext({
   URL,
+  document: {
+    createElement(tag) {
+      assert.equal(tag, 'span');
+      return {
+        setAttribute(name, value) { this[name] = value; },
+        remove() { statuses.splice(statuses.indexOf(this), 1); }
+      };
+    },
+    body: { append(element) { statuses.push(element); } }
+  },
   setTimeout: outcome === 'timeout' ? callback => { queueMicrotask(callback); return 1; } : setTimeout,
   clearTimeout: outcome === 'timeout' ? () => {} : clearTimeout,
   RoadFlowSourceIdentity: {
     async derive(url, expectedFormat) {
+      assert.equal(statuses.length, 1);
+      assert.equal(statuses[0].role, 'status');
+      assert.equal(statuses[0].textContent, '正在验证正文…');
       sourceReads.push({ url, expectedFormat });
       if (outcome === 'timeout') return new Promise(() => {});
       if (outcome === 'exception') throw new Error('Source read failed');
@@ -36,7 +50,11 @@ const context = vm.createContext({
           return { ok: true, configuration: { trustedOrigin: 'https://oa.example.test' } };
         }
         if (message.type === 'claim-reverification') return { ok: true, handoffID, sourceURL, expectedFormat: 'doc' };
-        if (message.type === 'complete-reverification-handoff') return { ok: true, editorURL };
+        if (message.type === 'complete-reverification-handoff') {
+          assert.equal(statuses.length, 1);
+          if (outcome === 'handoff-exception') throw new Error('Handoff failed');
+          return { ok: true, editorURL };
+        }
         throw new Error(`Unexpected message ${message.type}`);
       }
     },
@@ -62,6 +80,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(messages)), [
   { type: 'complete-reverification-handoff', handoffID,
     ...(outcome === 'success' ? { sourceIdentity: identity } : { sourceVerificationFailed: true }) }
 ]);
-assert.equal(replacementURL, editorURL);
+assert.equal(replacementURL, outcome === 'handoff-exception' ? undefined : editorURL);
+assert.equal(statuses.length, 0);
 
 }

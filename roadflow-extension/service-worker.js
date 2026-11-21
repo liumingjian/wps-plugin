@@ -95,7 +95,7 @@ function validatedEditorContext(value, configuration) {
   };
 }
 
-async function storeHandoff(context, pendingVerification = false, retryTabID) {
+async function storeHandoff(context, pendingVerification = false, ownerTabID) {
   const createdAt = Date.now();
   return serializedHandoffOperation(async () => {
     const stored = await chrome.storage.session.get(HANDOFF_STORAGE_KEY);
@@ -107,10 +107,10 @@ async function storeHandoff(context, pendingVerification = false, retryTabID) {
     do { handoffID = randomHex(32); } while (handoffs[handoffID]);
     handoffs[handoffID] = {
       ...context,
-      ownerTabID: retryTabID,
+      ownerTabID,
       createdAt,
       expiresAt: createdAt + HANDOFF_TTL_MS,
-      ...(pendingVerification ? { pendingVerification: true, retryTabID } : {})
+      ...(pendingVerification ? { pendingVerification: true, retryTabID: ownerTabID } : {})
     };
     await chrome.storage.session.set({ [HANDOFF_STORAGE_KEY]: handoffs });
     return { handoffID, handoff: handoffs[handoffID] };

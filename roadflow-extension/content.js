@@ -4,6 +4,16 @@ let configuration;
 const VERIFICATION_FAILURE_MESSAGE = '正文验证失败，未开放编辑。';
 let enteringEditor = false;
 
+function showVerificationProgress(anchor) {
+  if (typeof document === 'undefined') return undefined;
+  const progress = document.createElement('span');
+  progress.textContent = '正在验证正文…';
+  progress.setAttribute('role', 'status');
+  if (anchor) anchor.insertAdjacentElement('afterend', progress);
+  else document.body.append(progress);
+  return progress;
+}
+
 async function deriveSource(sourceURL, expectedFormat) {
   let timeout;
   try {
@@ -22,6 +32,7 @@ async function resumeReverification() {
   const claim = await chrome.runtime.sendMessage({ type: 'claim-reverification' });
   if (!claim?.ok) return;
   enteringEditor = true;
+  const progress = showVerificationProgress();
   try {
     const identityResult = await deriveSource(claim.sourceURL, claim.expectedFormat);
     const completed = await chrome.runtime.sendMessage({
@@ -33,6 +44,7 @@ async function resumeReverification() {
     else window.alert(VERIFICATION_FAILURE_MESSAGE);
   } finally {
     enteringEditor = false;
+    progress?.remove();
   }
 }
 
@@ -90,12 +102,7 @@ window.addEventListener('click', event => {
   event.preventDefault();
   if (enteringEditor) return;
   enteringEditor = true;
-  const progress = typeof document === 'undefined' ? undefined : document.createElement('span');
-  if (progress) {
-    progress.textContent = '正在验证正文…';
-    progress.setAttribute('role', 'status');
-    anchor.insertAdjacentElement('afterend', progress);
-  }
+  const progress = showVerificationProgress(anchor);
   void enterPackagedEditor(source, anchor.textContent.trim())
     .catch(() => window.alert(VERIFICATION_FAILURE_MESSAGE))
     .finally(() => { enteringEditor = false; progress?.remove(); });
