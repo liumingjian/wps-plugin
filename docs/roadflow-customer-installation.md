@@ -50,6 +50,11 @@ Before an Editor Handoff is issued, the extension reads the exact same-Origin
 DOC or DOCX source with the current OA browser session and rejects redirects and
 non-success responses. The packaged parser is `@zip.js/zip.js 2.8.34`; its
 BSD-3-Clause license is included as `zip-js.LICENSE`.
+Chromium 102 falls back to the packaged `pako 2.1.0` streaming raw-deflate
+decoder with 64 KiB output chunks and the same expanded-size ceiling; its
+MIT and zlib notices are included as `pako.LICENSE`. HTTP OA pages without
+Web Crypto use the packaged SHA-256 implementation; source bytes and exact
+encoded source paths retain the same verification contract.
 
 Legacy DOC uses the maintained SheetJS CFB 1.2.2 parser; its Apache-2.0 license
 is included as `cfb.LICENSE`. A DOC must be a parseable CFB/OLE container with a
