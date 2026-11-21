@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 vm.runInThisContext(await readFile(new URL('./zip-core.min.js', import.meta.url), 'utf8'), { filename: 'zip-core.min.js' });
 vm.runInThisContext(await readFile(new URL('./cfb.min.js', import.meta.url), 'utf8'), { filename: 'cfb.min.js' });
+vm.runInThisContext(await readFile(new URL('./pako-inflate.min.js', import.meta.url), 'utf8'), { filename: 'pako-inflate.min.js' });
 zip.configure({ useWebWorkers: false });
 
 class TestDOMParser {
@@ -126,6 +127,25 @@ assert.deepEqual(fetches, [{
   options: { cache: 'no-store', credentials: 'include', redirect: 'manual' }
 }]);
 
+const nativeCrypto = globalThis.crypto;
+for (const unavailableCrypto of [undefined, {}, { subtle: { digest: async () => { throw new Error('Unavailable'); } } }]) {
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, writable: true, value: unavailableCrypto });
+  nextResponse = sourceResponse(sourceBytes);
+  assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), result);
+}
+
+const nativeDecompressionStream = globalThis.DecompressionStream;
+class Chromium102DecompressionStream {
+  constructor(format) {
+    if (format === 'deflate-raw') throw new TypeError('Unsupported compression format: deflate-raw');
+    return new nativeDecompressionStream(format);
+  }
+}
+globalThis.DecompressionStream = Chromium102DecompressionStream;
+zip.configure({ DecompressionStream: Chromium102DecompressionStream });
+nextResponse = sourceResponse(sourceBytes);
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), result);
+
 const failure = { ok: false, message: 'Document verification failed. Editing was not opened.' };
 const docURL = 'https://oa.example.test/documents/Legacy.DOC';
 const docBytes = doc();
@@ -174,6 +194,15 @@ nextResponse = sourceResponse(await docx({
   'word/document.xml': strictDocument
 }));
 assert.equal((await RoadFlowSourceIdentity.derive(sourceURL, 'docx')).ok, true);
+
+// Compare varied validated Documents against Node's independent hash oracle.
+for (const size of [0, 1, 55, 56, 63, 64, 65, 1024]) {
+  const bytes = await docx({ 'custom/data.bin': 'x'.repeat(size) });
+  nextResponse = sourceResponse(bytes);
+  const identity = await RoadFlowSourceIdentity.derive(sourceURL, 'docx');
+  assert.equal(identity.ok, true);
+  assert.equal(identity.identity.sha256, createHash('sha256').update(bytes).digest('hex'));
+}
 
 const fragmentURL = `${sourceURL}#section`;
 nextResponse = sourceResponse(sourceBytes);
@@ -248,8 +277,16 @@ assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure
 nextResponse = sourceResponse(await docx({ 'word/styles.xml': '<styles><malformed></styles>' }));
 assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
 
+nextResponse = sourceResponse(inflatedMetadata(sourceBytes, 1));
+assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
+
 nextResponse = sourceResponse(inflatedMetadata(sourceBytes, 1024 * 1024));
 assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
 
 nextResponse = sourceResponse(inflatedMetadata(sourceBytes, 100 * 1024 * 1024 + 1));
 assert.deepEqual(await RoadFlowSourceIdentity.derive(sourceURL, 'docx'), failure);
+
+globalThis.DecompressionStream = nativeDecompressionStream;
+zip.configure({ DecompressionStream: nativeDecompressionStream });
+
+Object.defineProperty(globalThis, 'crypto', { configurable: true, writable: true, value: nativeCrypto });

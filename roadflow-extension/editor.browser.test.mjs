@@ -72,7 +72,7 @@ async function openEditor(page, scenario = {}) {
     });
     Object.defineProperty(globalThis, 'fetch', {
       configurable: true,
-      value: async () => {
+      value: async url => {
         const receipt = {
           handoff: handoffID,
           sourcePath: scenario.receiptMismatch ? '/UploadFiles/2026/Wrong.docx' : sourcePath,
@@ -81,7 +81,9 @@ async function openEditor(page, scenario = {}) {
           sha256: sourceIdentity.sha256,
           deliveredAt: new Date().toISOString()
         };
-        return { ok: true, status: 200, async json() { return receipt; } };
+        const response = Response.json(receipt);
+        Object.defineProperty(response, 'url', { value: url });
+        return response;
       }
     });
   }, { handoffID, scenario });
@@ -159,13 +161,9 @@ async function openPublicWorkflow(page) {
       configurable: true,
       value: async url => {
         const id = new URL(url).searchParams.get('handoff');
-        return {
-          ok: true,
-          status: 200,
-          async json() {
-            return { handoff: id, ...sourceIdentity, deliveredAt: new Date().toISOString() };
-          }
-        };
+        const response = Response.json({ handoff: id, ...sourceIdentity, deliveredAt: new Date().toISOString() });
+        Object.defineProperty(response, 'url', { value: url });
+        return response;
       }
     });
     globalThis.__roadFlowReturnURL = returnURL;

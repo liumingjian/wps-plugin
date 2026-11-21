@@ -44,7 +44,18 @@ if (typeof document !== 'undefined') {
   const settings = document.querySelector('#open-settings');
   const probe = document.createElement('object');
   probe.type = 'application/x-wps';
-  probe.hidden = true;
+  // Qaxbrowser initializes the NPAPI object only when it participates in layout.
+  Object.assign(probe.style, {
+    position: 'fixed',
+    left: '-10000px',
+    top: '-10000px',
+    width: '1px',
+    height: '1px',
+    opacity: '0',
+    pointerEvents: 'none'
+  });
+  probe.tabIndex = -1;
+  probe.setAttribute('aria-hidden', 'true');
   document.body.append(probe);
 
   chrome.storage.local.get(RoadFlowConfiguration.STORAGE_KEY).then(async stored => {

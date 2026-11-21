@@ -32,3 +32,29 @@ assert.deepEqual(RoadFlowReadiness.detectEnvironment(
   { Application: null },
   { plugins: [{ name: 'Kingsoft WPS Plugin' }], mimeTypes: { namedItem() { return {}; } } }
 ), { npapiAvailable: false });
+
+const body = {
+  dataset: {},
+  append(probe) {
+    this.probe = probe;
+    if (!probe.hidden) probe.Application = function () {};
+  }
+};
+const probe = { style: {}, setAttribute() {} };
+const label = { addEventListener() {} };
+const context = vm.createContext({
+  chrome: { storage: { local: { async get() { return { roadFlowIntegration: validConfiguration }; } } } },
+  document: {
+    body,
+    createElement() { return probe; },
+    querySelector() { return label; }
+  },
+  navigator: { mimeTypes: { namedItem() { return {}; } } },
+  URL,
+  setTimeout(callback) { queueMicrotask(callback); }
+});
+for (const filename of ['configuration.js', 'readiness.js']) {
+  vm.runInContext(await readFile(new URL(filename, import.meta.url), 'utf8'), context, { filename });
+}
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(body.dataset.readiness, 'ready');

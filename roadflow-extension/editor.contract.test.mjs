@@ -76,7 +76,13 @@ async function loadEditor({
     URL,
     URLSearchParams,
     Promise,
-    setTimeout(resolve, milliseconds) { now += milliseconds; queueMicrotask(resolve); },
+    AbortController,
+    TextDecoder,
+    clearTimeout,
+    setTimeout(resolve, milliseconds) {
+      if (milliseconds >= 1000) return setTimeout(() => { now += milliseconds; resolve(); }, 20);
+      now += milliseconds; queueMicrotask(resolve);
+    },
     chrome: {
       runtime: {
         async sendMessage(message) {
@@ -92,23 +98,32 @@ async function loadEditor({
     },
     fetch: async (url, options) => {
       fetches.push({ url, options });
+      if (receiptMode === 'hang') return new Promise(() => {});
       if (receiptMode === 'missing') return { ok: false, status: 404 };
       if (receiptMode === 'conflict') return { ok: false, status: 409 };
       const receiptHandoff = new URL(url).searchParams.get('handoff');
       const expectedIdentity = consumeResponse?.handoff?.sourceIdentity || sourceIdentity;
       return {
         ok: true,
-        status: 200,
-        async json() {
-          return {
+        status: receiptMode === 'partial' ? 206 : 200,
+        redirected: receiptMode === 'redirect',
+        url,
+        body: { getReader() { let read = false; return {
+          cancel() {},
+          async read() {
+            if (receiptMode === 'body-hang') return new Promise(() => {});
+            if (read) return { done: true };
+            read = true;
+            return { done: false, value: new TextEncoder().encode(JSON.stringify({
             handoff: receiptHandoff,
             sourcePath: expectedIdentity.sourcePath,
             actualFormat: expectedIdentity.actualFormat,
             byteCount: expectedIdentity.byteCount,
             sha256: receiptMode === 'mismatch' ? 'f'.repeat(64) : expectedIdentity.sha256,
             deliveredAt: new FakeDate(receiptMode === 'stale' ? now - 31_000 : now).toISOString()
-          };
-        }
+          }) + (receiptMode === 'oversized' ? ' '.repeat(5000) : '')) };
+          }
+        }; } }
       };
     },
     document: {
@@ -161,6 +176,10 @@ async function loadEditor({
   vm.runInContext(gateContract, context, { filename: 'identity-gate.js' });
   vm.runInContext(script, context, { filename: 'editor.js' });
   await settle(receiptMode === 'missing' ? 80 : 20);
+  if (['hang', 'body-hang'].includes(receiptMode)) {
+    await new Promise(resolve => setTimeout(resolve, 35));
+    await settle();
+  }
   return {
     elements, messages, documentOpens, overwriteCalls, fetches, confirmations, windowListeners,
     replacementURL: () => replacementURL
@@ -182,10 +201,8 @@ assert.deepEqual(verified.documentOpens, [{
   url: `https://gateway.example.test/wps/v1/document?fileurl=%2Fdocuments%2FQuarterly%2520Report.DOCX&_wpsHandoff=${firstHandoffID}`,
   readOnly: false
 }]);
-assert.deepEqual(JSON.parse(JSON.stringify(verified.fetches)), [{
-  url: `https://gateway.example.test/wps/v1/delivery-receipt?handoff=${firstHandoffID}`,
-  options: { cache: 'no-store', credentials: 'omit' }
-}]);
+assert.equal(verified.fetches[0].options.redirect, 'error');
+assert.equal(verified.fetches[0].options.credentials, 'omit');
 
 const overwriting = await loadEditor();
 const overwritePromise = overwriting.elements['save-document'].clickListener();
@@ -392,7 +409,7 @@ for (const failure of [
   { openResults: [true], activeDocument: false, receiptMode: 'match' },
   { openResults: [true], receiptMode: 'mismatch' },
   { openResults: [true], receiptMode: 'conflict' },
-  { openResults: [true], receiptMode: 'missing' }
+  ...['missing', 'redirect', 'partial', 'oversized', 'hang', 'body-hang'].map(receiptMode => ({ receiptMode }))
 ]) {
   const rejected = await loadEditor(failure);
   assert.equal(rejected.elements['editor-host'].children.length, 0);
@@ -419,7 +436,7 @@ for (const [search, response] of [
 ]) {
   const unavailable = await loadEditor({ search, consumeResponse: response });
   assert.equal(unavailable.elements['editor-host'].children.length, 0);
-  assert.match(unavailable.elements['editor-status'].textContent, /cannot be opened/i);
+  assert.match(unavailable.elements['editor-status'].textContent, /无法打开编辑器/);
 }
 
 const failedSourceHandoff = { ...handoff, sourceIdentity: undefined, sourceVerificationFailed: true };

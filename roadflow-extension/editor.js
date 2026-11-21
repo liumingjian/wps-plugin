@@ -28,7 +28,7 @@ function delay(milliseconds) {
 }
 
 function showUnavailableEditor() {
-  status.textContent = 'This editor cannot be opened. Return to the OA page and activate the Document Link again.';
+  status.textContent = '无法打开编辑器，请返回 OA 页面重新打开正文。';
 }
 
 function validatedHandoff(value, handoffID) {
@@ -100,26 +100,60 @@ async function waitForActiveDocument() {
 
 async function waitForReceipt(receiptURL, handoffID, identity, attemptStartedAt) {
   const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const response = await fetch(receiptURL, { cache: 'no-store', credentials: 'omit' });
-    if (response.status === 409) throw new Error('Gateway returned conflicting receipts.');
-    if (response.status === 204) {
-      await delay(RECEIPT_POLL_MS);
-      continue;
-    }
-    if (response.ok) {
-      let candidate;
-      try { candidate = await response.json(); } catch {}
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error('Gateway Delivery Receipt verification timed out.'));
+    }, RECEIPT_TIMEOUT_MS);
+  });
+  async function lookup() {
+    while (Date.now() < deadline) {
+      const response = await fetch(receiptURL, {
+        cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal
+      });
+      if (response.redirected || response.url !== receiptURL) {
+        throw new Error('Gateway receipt redirect rejected.');
+      }
+      if (response.status === 404 || response.status === 204) {
+        await response.body?.cancel();
+        await delay(RECEIPT_POLL_MS);
+        continue;
+      }
+      if (response.status !== 200 || !response.body) throw new Error('Gateway receipt lookup failed.');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8', { fatal: true });
+      let text = '';
+      let bytes = 0;
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          bytes += chunk.value.byteLength;
+          if (bytes > 4096) throw new Error('Gateway receipt is oversized.');
+          text += decoder.decode(chunk.value, { stream: true });
+        }
+        text += decoder.decode();
+      } catch (error) {
+        void Promise.resolve(reader.cancel()).catch(() => {});
+        throw error;
+      }
+      if (Date.now() >= deadline) throw new Error('Gateway receipt arrived too late.');
       const receipt = RoadFlowIdentityGate.validateReceipt(
-        candidate, handoffID, identity, Date.now(), attemptStartedAt
+        JSON.parse(text), handoffID, identity, Date.now(), attemptStartedAt
       );
       if (!receipt) throw new Error('Gateway Delivery Receipt did not match the source Document.');
       return receipt;
     }
-    if (response.status !== 404) throw new Error('Gateway Delivery Receipt lookup failed.');
-    await delay(RECEIPT_POLL_MS);
+    throw new Error('Gateway Delivery Receipt verification timed out.');
   }
-  throw new Error('Gateway Delivery Receipt verification timed out.');
+  try {
+    return await Promise.race([lookup(), timeout]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }
 
 function showVerificationFailure() {
@@ -137,6 +171,8 @@ async function verifyHandoff(handoffID, handoff) {
   currentHandoff = handoff;
   title.textContent = handoff.title;
   sourceLabel.textContent = handoff.sourcePath;
+  sourceLabel.title = handoff.sourcePath;
+  title.title = handoff.title;
   status.textContent = '正在打开正文';
   retryButton.hidden = true;
   retryButton.disabled = true;
