@@ -147,7 +147,9 @@ func (gateway *handler) recordReceipt(receipt deliveryReceipt) {
 	defer gateway.mu.Unlock()
 	gateway.pruneReceipts(receipt.DeliveredAt)
 	if existing, found := gateway.receipts[receipt.Handoff]; found {
-		existing.conflict = existing.conflict || existing.receipt != receipt
+		comparison := receipt
+		comparison.DeliveredAt = existing.receipt.DeliveredAt
+		existing.conflict = existing.conflict || existing.receipt != comparison
 		gateway.receipts[receipt.Handoff] = existing
 		return
 	}
