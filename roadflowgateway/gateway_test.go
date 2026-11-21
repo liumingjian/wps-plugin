@@ -258,3 +258,18 @@ func (writer *flushFailWriter) Header() http.Header {
 func (*flushFailWriter) WriteHeader(int)                   {}
 func (*flushFailWriter) Write(payload []byte) (int, error) { return len(payload), nil }
 func (*flushFailWriter) FlushError() error                 { return errors.New("connection closed while flushing") }
+
+func TestRepeatedIdenticalDeliveryPreservesOriginalReceiptAndExpiry(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "legacy-report.doc")
+	write(t, target, fixture(t, "original.doc"))
+	now := time.Date(2026, 8, 2, 9, 0, 0, 0, time.UTC)
+	gateway := gatewayHandler(t, target, func() time.Time { return now })
+	_, first := deliver(t, gateway, handoff)
+	now = now.Add(time.Second)
+	_, second := deliver(t, gateway, handoff)
+	if first != second {
+		t.Fatal("identical duplicate changed receipt")
+	}
+	now = now.Add(4 * time.Second)
+	assertMissingReceipt(t, gateway, handoff)
+}

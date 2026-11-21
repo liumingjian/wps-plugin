@@ -35,11 +35,13 @@
   }
 
   function validateReceipt(value, handoffID, sourceIdentity, now, attemptStartedAt) {
-    if (!value || Array.isArray(value) || typeof value !== 'object' ||
+    if (!Number.isFinite(now) || !Number.isFinite(attemptStartedAt) ||
+        !value || Array.isArray(value) || typeof value !== 'object' ||
         Object.keys(value).sort().join('\0') !== RECEIPT_KEYS.join('\0') ||
         value.handoff !== handoffID || value.sourcePath !== sourceIdentity?.sourcePath ||
         value.actualFormat !== sourceIdentity?.actualFormat || value.byteCount !== sourceIdentity?.byteCount ||
-        value.sha256 !== sourceIdentity?.sha256 || typeof value.deliveredAt !== 'string') return undefined;
+        value.sha256 !== sourceIdentity?.sha256 || typeof value.deliveredAt !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value.deliveredAt)) return undefined;
 
     const deliveredAt = Date.parse(value.deliveredAt);
     if (!Number.isFinite(deliveredAt) || deliveredAt < attemptStartedAt - CLOCK_SKEW_MS ||

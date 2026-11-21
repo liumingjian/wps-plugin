@@ -85,3 +85,11 @@ assert.throws(
   ),
   /source path/i
 );
+
+for (const deliveredAt of ['2026-08-02', '2026-08-02T12:00:00', '2026-08-02T12:00:00.000Z junk']) {
+  assert.equal(RoadFlowIdentityGate.validateReceipt(
+    { ...receipt, deliveredAt }, handoffID, sourceIdentity, now, now - 1000
+  ), undefined);
+}
+assert.equal(RoadFlowIdentityGate.validateReceipt(receipt, handoffID, sourceIdentity, NaN, now - 1000), undefined);
+assert.equal(RoadFlowIdentityGate.validateReceipt(receipt, handoffID, sourceIdentity, now, NaN), undefined);
