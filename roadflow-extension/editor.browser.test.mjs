@@ -10,12 +10,13 @@ const editorURL = pathToFileURL(fileURLToPath(new URL('./editor.html', import.me
 const handoffID = 'a'.repeat(64);
 const extensionOrigin = 'chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd';
 
-test('the installed extension verifies an authenticated DOC and replaces the OA page', async () => {
+test('the installed extension repeats the authenticated DOC read after a failed handoff', async () => {
   const sourcePath = '/documents/Quarterly%20Report.DOC';
   const bytes = await readFile(new URL('../roadflowoa/testdata/original.doc', import.meta.url));
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const delivered = new Map();
   let authenticatedReads = 0;
+  let sourceAvailable = false;
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://localhost');
     response.setHeader('Cache-Control', 'no-store');
@@ -25,6 +26,10 @@ test('the installed extension verifies an authenticated DOC and replaces the OA 
       response.end(`<a href="${sourcePath}">Quarterly Report</a>`);
     } else if (url.pathname === sourcePath && request.headers.cookie === 'session=mock') {
       authenticatedReads += 1;
+      if (!sourceAvailable) {
+        response.writeHead(401).end();
+        return;
+      }
       response.end(bytes);
     } else if (url.pathname === '/wps/document' && url.searchParams.get('fileurl') === sourcePath &&
         !request.headers.cookie) {
@@ -82,9 +87,21 @@ test('the installed extension verifies an authenticated DOC and replaces the OA 
     const returnURL = `${origin}/oa?step=review#document`;
     await page.goto(returnURL);
     await page.getByRole('link', { name: 'Quarterly Report' }).click();
-    await expect(page).toHaveURL(new RegExp(`^${extensionOrigin}/editor\\.html\\?handoff=[a-f0-9]{64}$`));
-    await expect(page.locator('#editor-status')).toHaveText('正文可编辑');
+    const opaqueEditorURL = new RegExp(`^${extensionOrigin}/editor\\.html\\?handoff=[a-f0-9]{64}$`);
+    await expect(page).toHaveURL(opaqueEditorURL);
+    const failedHandoff = page.url();
+    await expect(page.locator('#editor-status')).toHaveText('验证失败，未开放编辑或保存。');
+    await expect(page.locator('#editor-host object')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(authenticatedReads).toBe(1);
+    expect(delivered.size).toBe(0);
+
+    sourceAvailable = true;
+    await page.getByRole('button', { name: '重新验证' }).click();
+    await expect(page.locator('#editor-status')).toHaveText('正文可编辑');
+    await expect(page).toHaveURL(opaqueEditorURL);
+    expect(page.url()).not.toBe(failedHandoff);
+    expect(authenticatedReads).toBe(2);
     expect(delivered.size).toBe(1);
     expect(context.pages()).toHaveLength(1);
     await page.getByRole('button', { name: '返回 OA' }).click();
