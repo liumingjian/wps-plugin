@@ -4,6 +4,7 @@ import vm from 'node:vm';
 
 let messageListener;
 let tabRemovedListener;
+let registeredScripts = [];
 let localStored = {};
 let sessionStored = {};
 let now = 1_800_000_000_000;
@@ -14,6 +15,10 @@ globalThis.Date = class extends RealDate {
 };
 
 globalThis.chrome = {
+  scripting: {
+    async getRegisteredContentScripts() { return registeredScripts; },
+    async registerContentScripts(scripts) { registeredScripts = scripts; }
+  },
   tabs: { onRemoved: { addListener(listener) { tabRemovedListener = listener; } } },
   runtime: {
     getURL(path) { return `${extensionOrigin}/${path}`; },
@@ -55,6 +60,9 @@ const response = await new Promise(resolve => {
 });
 assert.deepEqual(response, { ok: true, configuration });
 assert.deepEqual(localStored, { roadFlowIntegration: configuration });
+assert.equal(registeredScripts.length, 1);
+assert.deepEqual(registeredScripts[0].matches, ['https://oa.example.test/*']);
+assert.equal(registeredScripts[0].runAt, 'document_start');
 
 const rejected = await new Promise(resolve => {
   messageListener(

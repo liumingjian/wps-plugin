@@ -20,7 +20,10 @@ test('the installed extension repeats the authenticated DOC read after a failed 
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://localhost');
     response.setHeader('Cache-Control', 'no-store');
-    if (url.pathname === '/oa') {
+    if (url.pathname === '/') {
+      response.setHeader('Content-Type', 'text/html');
+      response.end('<a href="/oa?step=review#document">Open OA</a>');
+    } else if (url.pathname === '/oa') {
       response.setHeader('Content-Type', 'text/html');
       response.setHeader('Set-Cookie', 'session=mock; HttpOnly; SameSite=Strict');
       response.end(`<a href="${sourcePath}">Quarterly Report</a>`);
@@ -57,6 +60,11 @@ test('the installed extension repeats the authenticated DOC read after a failed 
   try {
     const extension = join(staging, 'extension');
     await cp(new URL('./', import.meta.url), extension, { recursive: true });
+    const manifestPath = join(extension, 'manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    // Model the user's granted host access without a browser permission prompt.
+    manifest.host_permissions = [`${origin}/*`];
+    await writeFile(manifestPath, JSON.stringify(manifest));
     const icon = await readFile(new URL('../extension/icon.png.base64', import.meta.url), 'ascii');
     await writeFile(join(extension, 'icon.png'), Buffer.from(icon, 'base64'));
     context = await chromium.launchPersistentContext(join(staging, 'profile'), {
@@ -64,14 +72,16 @@ test('the installed extension repeats the authenticated DOC read after a failed 
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`]
     });
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
-    await worker.evaluate(async origin => {
-      await chrome.storage.local.set({
-        roadFlowIntegration: {
-          trustedOrigin: origin,
-          gatewayTemplate: `${origin}/wps/document?fileurl={sourcePath}`
-        }
-      });
-    }, origin);
+    const setup = await context.newPage();
+    await setup.goto(new URL('/options.html', worker.url()).href);
+    expect(await setup.evaluate(origin => chrome.runtime.sendMessage({
+      type: 'apply-configuration',
+      configuration: {
+        trustedOrigin: origin,
+        gatewayTemplate: `${origin}/wps/document?fileurl={sourcePath}`
+      }
+    }), origin)).toMatchObject({ ok: true });
+    await setup.close();
     await context.addInitScript(() => {
       Object.defineProperty(HTMLObjectElement.prototype, 'Application', {
         value: {
@@ -85,7 +95,9 @@ test('the installed extension repeats the authenticated DOC read after a failed 
     });
     const [page] = context.pages();
     const returnURL = `${origin}/oa?step=review#document`;
-    await page.goto(returnURL);
+    await page.goto(origin);
+    await page.getByRole('link', { name: 'Open OA' }).click();
+    await expect(page).toHaveURL(returnURL);
     await page.getByRole('link', { name: 'Quarterly Report' }).click();
     const opaqueEditorURL = new RegExp(`^${extensionOrigin}/editor\\.html\\?handoff=[a-f0-9]{64}$`);
     await expect(page).toHaveURL(opaqueEditorURL);
@@ -106,6 +118,8 @@ test('the installed extension repeats the authenticated DOC read after a failed 
     expect(context.pages()).toHaveLength(1);
     await page.getByRole('button', { name: '返回 OA' }).click();
     await expect(page).toHaveURL(returnURL);
+    await page.goBack();
+    await expect(page).toHaveURL(`${origin}/`);
   } finally {
     await context?.close();
     await new Promise(resolve => server.close(resolve));

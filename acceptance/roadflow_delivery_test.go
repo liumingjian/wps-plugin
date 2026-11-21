@@ -52,7 +52,7 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	if manifest.Name != "RoadFlow WPS Editor" || manifest.Version != "1.0.0" || computedRoadFlowID != roadFlowExtensionID || computedRoadFlowID == productionExtensionID {
 		t.Fatalf("RoadFlow manifest identity = %+v", manifest)
 	}
-	if strings.Join(manifest.Permissions, ",") != "storage" {
+	if strings.Join(manifest.Permissions, ",") != "storage,scripting" {
 		t.Fatalf("RoadFlow permissions = %q", manifest.Permissions)
 	}
 	if strings.Join(manifest.OptionalHostPermissions, ",") != "http://*/*,https://*/*" {
@@ -61,9 +61,8 @@ func TestRoadFlowReleaseStagesAStandaloneFixedIDCRXRoute(t *testing.T) {
 	if manifest.OptionsPage != "options.html" || manifest.Background.ServiceWorker != "service-worker.js" {
 		t.Fatalf("RoadFlow packaged entry points = %+v", manifest)
 	}
-	if len(manifest.ContentScripts) != 1 || strings.Join(manifest.ContentScripts[0].Matches, ",") != "http://*/*,https://*/*" ||
-		strings.Join(manifest.ContentScripts[0].JS, ",") != "zip-core.min.js,pako-inflate.min.js,cfb.min.js,source-identity-contract.js,source-identity.js,content.js" || manifest.ContentScripts[0].RunAt != "document_start" {
-		t.Fatalf("RoadFlow Document Link interceptor = %+v", manifest.ContentScripts)
+	if len(manifest.ContentScripts) != 0 {
+		t.Fatalf("RoadFlow Document Link interceptor registered statically = %+v", manifest.ContentScripts)
 	}
 	if len(manifest.WebAccessibleResources) != 1 || strings.Join(manifest.WebAccessibleResources[0].Resources, ",") != "editor.html" ||
 		strings.Join(manifest.WebAccessibleResources[0].Matches, ",") != "http://*/*,https://*/*" {

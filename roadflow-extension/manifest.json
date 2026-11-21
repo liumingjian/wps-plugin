@@ -4,14 +4,9 @@
   "version": "1.0.0",
   "description": "Open configured RoadFlow Documents in the packaged WPS editor.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv+JIiXK7aaQfSEBXrLpXjp8hIjCAdoNJnMSDpNIMvQh013xMroCOR2kU0BjRjthHxNX+HhXWl2TcxNc0PCk96PxPdR6OEPM/qssMyKaNCueFMtSqDE+Zg1lVPLrGuSX2qC/bcu5QUFNnBRoWpIv6NHNBgCtwBL3Eslg8HmnRkfKoULMHeUj2+yyNnrJZ5OVow3LbIaiuJGJiVEFdp7/hCDBfKY8+ZpJ2dJJWKLrW6vx499rJ3ECpC/EG2oiSVxj80RpUrYgLbzbGV0xQDvIktWAe7FvSa+jAlZyRVVs6VZEO9yz57Bnvyq2Wc047TUzZQ9WXz9988VzKH9VlFhYdPQIDAQAB",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "service-worker.js" },
-  "content_scripts": [{
-    "matches": ["http://*/*", "https://*/*"],
-    "js": ["zip-core.min.js", "pako-inflate.min.js", "cfb.min.js", "source-identity-contract.js", "source-identity.js", "content.js"],
-    "run_at": "document_start"
-  }],
   "web_accessible_resources": [{
     "resources": ["editor.html"],
     "matches": ["http://*/*", "https://*/*"]

@@ -33,7 +33,7 @@ https://wps-gateway.example.internal/wps/document?fileurl={sourcePath}
 Saving asks Qaxbrowser to grant access to the exact OA and Gateway Origins. If
 either Origin is changed later, obsolete grants are removed after the replacement
 configuration is active. The extension does not register its link interceptor
-on other Origins.
+on other Origins. Reload any already-open OA page after changing configuration.
 
 The customer-operated WPS Document Gateway must be read-only, byte-preserving,
 and reachable only on the trusted office network. It must not convert, retain,

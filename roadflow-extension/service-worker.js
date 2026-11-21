@@ -7,6 +7,11 @@ const EDITOR_CONTEXT_STORAGE_KEY = 'editorContexts';
 const REVERIFICATION_STORAGE_KEY = 'editorReverifications';
 const HANDOFF_TTL_MS = 120_000;
 const HANDOFF_ID_PATTERN = /^[a-f0-9]{64}$/;
+const DOCUMENT_LINK_SCRIPT_ID = 'roadflow-document-link';
+const DOCUMENT_LINK_SCRIPTS = [
+  'zip-core.min.js', 'pako-inflate.min.js', 'cfb.min.js',
+  'source-identity-contract.js', 'source-identity.js', 'content.js'
+];
 let handoffOperation = Promise.resolve();
 
 function serializedHandoffOperation(operation) {
@@ -24,6 +29,18 @@ async function configuredIntegration() {
   const stored = await chrome.storage.local.get(RoadFlowConfiguration.STORAGE_KEY);
   const result = RoadFlowConfiguration.validate(stored[RoadFlowConfiguration.STORAGE_KEY]);
   return result.ok ? result.value : undefined;
+}
+
+async function registerDocumentLinkHandler(configuration) {
+  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [DOCUMENT_LINK_SCRIPT_ID] });
+  const script = {
+    id: DOCUMENT_LINK_SCRIPT_ID,
+    matches: [RoadFlowConfiguration.originPattern(configuration.trustedOrigin)],
+    js: DOCUMENT_LINK_SCRIPTS,
+    runAt: 'document_start'
+  };
+  if (existing.length > 0) await chrome.scripting.updateContentScripts([script]);
+  else await chrome.scripting.registerContentScripts([script]);
 }
 
 function senderOrigin(sender) {
@@ -314,15 +331,26 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     return false;
   }
   const matches = RoadFlowConfiguration.permissionPatterns(result.value);
-  chrome.permissions.contains({ origins: matches }).then(async granted => {
+  serializedHandoffOperation(async () => {
+    const granted = await chrome.permissions.contains({ origins: matches });
     if (!granted) {
       respond({ ok: false, message: 'Trusted OA Origin access was not granted.' });
       return;
     }
+    await registerDocumentLinkHandler(result.value);
     await chrome.storage.local.set({ [RoadFlowConfiguration.STORAGE_KEY]: result.value });
     respond({ ok: true, configuration: result.value });
   }).catch(() => respond({ ok: false, message: 'Configuration could not be applied.' }));
   return true;
+});
+
+chrome.runtime.onInstalled?.addListener(() => {
+  void serializedHandoffOperation(async () => {
+    const configuration = await configuredIntegration();
+    if (configuration && await chrome.permissions.contains({
+      origins: RoadFlowConfiguration.permissionPatterns(configuration)
+    })) await registerDocumentLinkHandler(configuration);
+  }).catch(() => {});
 });
 
 // Tab closure drops both unconsumed handoffs and the consumed recovery context.
