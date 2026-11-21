@@ -198,12 +198,15 @@ clickListener({
 });
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(failurePrevented, true);
-assert.equal(replacementURL, undefined);
-assert.equal(messages.length, failureMessageCount);
-assert.deepEqual(alerts, ['Document verification failed. Editing was not opened.']);
+assert.equal(replacementURL, handoffResponse.editorURL);
+assert.equal(messages.length, failureMessageCount + 1);
+assert.equal(messages.at(-1).activation.sourceVerificationFailed, true);
+assert.equal(messages.at(-1).activation.sourceIdentity, undefined);
+assert.deepEqual(alerts, []);
 
 nextIdentityResult = { ok: true, identity: validIdentity };
 handoffResponse = { ok: false };
+replacementURL = undefined;
 clickListener({
   isTrusted: true,
   button: 0,
@@ -220,8 +223,7 @@ clickListener({
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(replacementURL, undefined);
 assert.deepEqual(alerts, [
-  'Document verification failed. Editing was not opened.',
-  'Document verification failed. Editing was not opened.'
+  '正文验证失败，未开放编辑。'
 ]);
 
 storageListener({

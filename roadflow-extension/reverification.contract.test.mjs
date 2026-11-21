@@ -11,16 +11,21 @@ const identity = {
   sha256: 'e'.repeat(64)
 };
 const editorURL = `chrome-extension://fixed/editor.html?handoff=${handoffID}`;
+for (const outcome of ['success', 'failure', 'exception', 'timeout']) {
 const messages = [];
 const sourceReads = [];
 let replacementURL;
 
 const context = vm.createContext({
   URL,
+  setTimeout: outcome === 'timeout' ? callback => { queueMicrotask(callback); return 1; } : setTimeout,
+  clearTimeout: outcome === 'timeout' ? () => {} : clearTimeout,
   RoadFlowSourceIdentity: {
     async derive(url, expectedFormat) {
       sourceReads.push({ url, expectedFormat });
-      return { ok: true, identity };
+      if (outcome === 'timeout') return new Promise(() => {});
+      if (outcome === 'exception') throw new Error('Source read failed');
+      return outcome === 'success' ? { ok: true, identity } : { ok: false };
     }
   },
   chrome: {
@@ -54,6 +59,9 @@ assert.deepEqual(sourceReads, [{ url: sourceURL, expectedFormat: 'doc' }]);
 assert.deepEqual(JSON.parse(JSON.stringify(messages)), [
   { type: 'configuration' },
   { type: 'claim-reverification' },
-  { type: 'complete-reverification-handoff', handoffID, sourceIdentity: identity }
+  { type: 'complete-reverification-handoff', handoffID,
+    ...(outcome === 'success' ? { sourceIdentity: identity } : { sourceVerificationFailed: true }) }
 ]);
 assert.equal(replacementURL, editorURL);
+
+}
