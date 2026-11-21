@@ -1,9 +1,100 @@
-import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { chromium, expect, test } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const editorURL = pathToFileURL(fileURLToPath(new URL('./editor.html', import.meta.url))).href;
 const handoffID = 'a'.repeat(64);
+const extensionOrigin = 'chrome-extension://bojjhibgkhknccepabkojdjodhhgdjfd';
+
+test('the installed extension verifies an authenticated DOC and replaces the OA page', async () => {
+  const sourcePath = '/documents/Quarterly%20Report.DOC';
+  const bytes = await readFile(new URL('../roadflowoa/testdata/original.doc', import.meta.url));
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const delivered = new Map();
+  let authenticatedReads = 0;
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    response.setHeader('Cache-Control', 'no-store');
+    if (url.pathname === '/oa') {
+      response.setHeader('Content-Type', 'text/html');
+      response.setHeader('Set-Cookie', 'session=mock; HttpOnly; SameSite=Strict');
+      response.end(`<a href="${sourcePath}">Quarterly Report</a>`);
+    } else if (url.pathname === sourcePath && request.headers.cookie === 'session=mock') {
+      authenticatedReads += 1;
+      response.end(bytes);
+    } else if (url.pathname === '/wps/document' && url.searchParams.get('fileurl') === sourcePath &&
+        !request.headers.cookie) {
+      const handoff = url.searchParams.get('_wpsHandoff');
+      response.setHeader('Access-Control-Allow-Origin', extensionOrigin);
+      response.end(bytes, () => {
+        delivered.set(handoff, { handoff, sourcePath, actualFormat: 'doc', byteCount: bytes.length,
+          sha256, deliveredAt: new Date().toISOString() });
+      });
+    } else if (url.pathname === '/wps/delivery-receipt' && request.method === 'POST' &&
+        request.headers.origin === extensionOrigin) {
+      const receipt = delivered.get(url.searchParams.get('handoff'));
+      response.setHeader('Access-Control-Allow-Origin', extensionOrigin);
+      response.setHeader('Content-Type', 'application/json');
+      response.writeHead(receipt ? 200 : 204);
+      response.end(receipt && JSON.stringify(receipt));
+    } else {
+      response.writeHead(404).end();
+    }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const staging = await mkdtemp(join(tmpdir(), 'roadflow-browser-'));
+  let context;
+  try {
+    const extension = join(staging, 'extension');
+    await cp(new URL('./', import.meta.url), extension, { recursive: true });
+    const icon = await readFile(new URL('../extension/icon.png.base64', import.meta.url), 'ascii');
+    await writeFile(join(extension, 'icon.png'), Buffer.from(icon, 'base64'));
+    context = await chromium.launchPersistentContext(join(staging, 'profile'), {
+      channel: 'chromium',
+      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`]
+    });
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    await worker.evaluate(async origin => {
+      await chrome.storage.local.set({
+        roadFlowIntegration: {
+          trustedOrigin: origin,
+          gatewayTemplate: `${origin}/wps/document?fileurl={sourcePath}`
+        }
+      });
+    }, origin);
+    await context.addInitScript(() => {
+      Object.defineProperty(HTMLObjectElement.prototype, 'Application', {
+        value: {
+          ActiveDocument: {},
+          openDocument(url) {
+            void fetch(url, { credentials: 'omit' });
+            return true;
+          }
+        }
+      });
+    });
+    const [page] = context.pages();
+    const returnURL = `${origin}/oa?step=review#document`;
+    await page.goto(returnURL);
+    await page.getByRole('link', { name: 'Quarterly Report' }).click();
+    await expect(page).toHaveURL(new RegExp(`^${extensionOrigin}/editor\\.html\\?handoff=[a-f0-9]{64}$`));
+    await expect(page.locator('#editor-status')).toHaveText('正文可编辑');
+    expect(authenticatedReads).toBe(1);
+    expect(delivered.size).toBe(1);
+    expect(context.pages()).toHaveLength(1);
+    await page.getByRole('button', { name: '返回 OA' }).click();
+    await expect(page).toHaveURL(returnURL);
+  } finally {
+    await context?.close();
+    await new Promise(resolve => server.close(resolve));
+    await rm(staging, { recursive: true, force: true });
+  }
+});
 
 function installWPSBoundary(scenario) {
   const overwriteResults = [...(scenario.overwriteResults || [true])];

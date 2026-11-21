@@ -111,6 +111,7 @@ async function waitForReceipt(receiptURL, handoffID, identity, attemptStartedAt)
   async function lookup() {
     while (Date.now() < deadline) {
       const response = await fetch(receiptURL, {
+        method: 'POST',
         cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal
       });
       if (response.redirected || response.url !== receiptURL) {

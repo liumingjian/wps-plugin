@@ -132,7 +132,7 @@ func TestConflictingHandoffReceiptRemainsConflicted(t *testing.T) {
 	delivery = httptest.NewRecorder()
 	gateway.ServeHTTP(delivery, httptest.NewRequest(http.MethodGet, "/wps/document?fileurl="+docPath+"&_wpsHandoff="+handoff, nil))
 
-	lookup := httptest.NewRequest(http.MethodGet, "/wps/delivery-receipt?handoff="+handoff, nil)
+	lookup := httptest.NewRequest(http.MethodPost, "/wps/delivery-receipt?handoff="+handoff, nil)
 	lookup.Header.Set("Origin", roadflowgateway.ExtensionOrigin)
 	response := httptest.NewRecorder()
 	gateway.ServeHTTP(response, lookup)
@@ -167,7 +167,7 @@ func deliver(t *testing.T, gateway http.Handler, handoffID string) ([]byte, rece
 	if delivery.Code != http.StatusOK {
 		t.Fatalf("delivery status = %d, body = %s", delivery.Code, delivery.Body.String())
 	}
-	lookup := httptest.NewRequest(http.MethodGet, "/wps/delivery-receipt?handoff="+handoffID, nil)
+	lookup := httptest.NewRequest(http.MethodPost, "/wps/delivery-receipt?handoff="+handoffID, nil)
 	lookup.Header.Set("Origin", roadflowgateway.ExtensionOrigin)
 	recorded := httptest.NewRecorder()
 	gateway.ServeHTTP(recorded, lookup)
@@ -183,7 +183,7 @@ func deliver(t *testing.T, gateway http.Handler, handoffID string) ([]byte, rece
 
 func assertMissingReceipt(t *testing.T, gateway http.Handler, handoffID string) {
 	t.Helper()
-	lookup := httptest.NewRequest(http.MethodGet, "/wps/delivery-receipt?handoff="+handoffID, nil)
+	lookup := httptest.NewRequest(http.MethodPost, "/wps/delivery-receipt?handoff="+handoffID, nil)
 	lookup.Header.Set("Origin", roadflowgateway.ExtensionOrigin)
 	response := httptest.NewRecorder()
 	gateway.ServeHTTP(response, lookup)

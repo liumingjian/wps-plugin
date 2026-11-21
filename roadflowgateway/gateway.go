@@ -81,7 +81,7 @@ func (gateway *handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/wps/document":
 		gateway.deliverDocument(response, request)
-	case request.Method == http.MethodGet && request.URL.Path == "/wps/delivery-receipt":
+	case request.Method == http.MethodPost && request.URL.Path == "/wps/delivery-receipt":
 		gateway.readReceipt(response, request)
 	default:
 		http.Error(response, "not found", http.StatusNotFound)
