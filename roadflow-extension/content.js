@@ -1,23 +1,39 @@
 'use strict';
 
 let configuration;
-const VERIFICATION_FAILURE_MESSAGE = 'Document verification failed. Editing was not opened.';
+const VERIFICATION_FAILURE_MESSAGE = '正文验证失败，未开放编辑。';
+let enteringEditor = false;
+
+async function deriveSource(sourceURL, expectedFormat) {
+  let timeout;
+  try {
+    return await Promise.race([
+      RoadFlowSourceIdentity.derive(sourceURL, expectedFormat),
+      new Promise(resolve => { timeout = setTimeout(() => resolve({ ok: false }), 30_000); })
+    ]);
+  } catch {
+    return { ok: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function resumeReverification() {
   const claim = await chrome.runtime.sendMessage({ type: 'claim-reverification' });
   if (!claim?.ok) return;
-  const identityResult = await RoadFlowSourceIdentity.derive(claim.sourceURL, claim.expectedFormat);
-  if (!identityResult.ok) {
-    window.alert(identityResult.message);
-    return;
+  enteringEditor = true;
+  try {
+    const identityResult = await deriveSource(claim.sourceURL, claim.expectedFormat);
+    const completed = await chrome.runtime.sendMessage({
+      type: 'complete-reverification-handoff',
+      handoffID: claim.handoffID,
+      ...(identityResult.ok ? { sourceIdentity: identityResult.identity } : { sourceVerificationFailed: true })
+    });
+    if (completed?.ok) location.replace(completed.editorURL);
+    else window.alert(VERIFICATION_FAILURE_MESSAGE);
+  } finally {
+    enteringEditor = false;
   }
-  const completed = await chrome.runtime.sendMessage({
-    type: 'complete-reverification-handoff',
-    handoffID: claim.handoffID,
-    sourceIdentity: identityResult.identity
-  });
-  if (completed?.ok) location.replace(completed.editorURL);
-  else window.alert(VERIFICATION_FAILURE_MESSAGE);
 }
 
 chrome.runtime.sendMessage({ type: 'configuration' }).then(response => {
@@ -32,18 +48,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 async function enterPackagedEditor(source, title) {
+  const returnURL = location.href;
   const expectedFormat = /\.docx$/i.test(source.pathname) ? 'docx' : 'doc';
-  const identityResult = await RoadFlowSourceIdentity.derive(source.href, expectedFormat);
-  if (!identityResult.ok) {
-    window.alert(identityResult.message);
-    return;
-  }
+  const identityResult = await deriveSource(source.href, expectedFormat);
   const activation = {
-    returnURL: location.href,
+    returnURL,
     sourceURL: source.href,
     title
   };
-  activation.sourceIdentity = identityResult.identity;
+  if (identityResult.ok) activation.sourceIdentity = identityResult.identity;
+  else activation.sourceVerificationFailed = true;
   const response = await chrome.runtime.sendMessage({
     type: 'create-editor-handoff',
     activation
@@ -74,6 +88,15 @@ window.addEventListener('click', event => {
       !/\.docx?$/i.test(source.pathname)) return;
 
   event.preventDefault();
+  if (enteringEditor) return;
+  enteringEditor = true;
+  const progress = typeof document === 'undefined' ? undefined : document.createElement('span');
+  if (progress) {
+    progress.textContent = '正在验证正文…';
+    progress.setAttribute('role', 'status');
+    anchor.insertAdjacentElement('afterend', progress);
+  }
   void enterPackagedEditor(source, anchor.textContent.trim())
-    .catch(() => window.alert(VERIFICATION_FAILURE_MESSAGE));
+    .catch(() => window.alert(VERIFICATION_FAILURE_MESSAGE))
+    .finally(() => { enteringEditor = false; progress?.remove(); });
 }, false);

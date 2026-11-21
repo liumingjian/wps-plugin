@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 let messageListener;
+let tabRemovedListener;
 let localStored = {};
 let sessionStored = {};
 let now = 1_800_000_000_000;
@@ -13,6 +14,7 @@ globalThis.Date = class extends RealDate {
 };
 
 globalThis.chrome = {
+  tabs: { onRemoved: { addListener(listener) { tabRemovedListener = listener; } } },
   runtime: {
     getURL(path) { return `${extensionOrigin}/${path}`; },
     onMessage: { addListener(listener) { messageListener = listener; } }
@@ -98,7 +100,7 @@ assert.doesNotMatch(created.editorURL, /oa\.example|documents|Quarterly/i);
 const consume = () => new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: editorURL.searchParams.get('handoff') },
-    { url: created.editorURL },
+    { url: created.editorURL, tab: { id: 7 } },
     resolve
   );
 });
@@ -157,7 +159,7 @@ assert.doesNotMatch(retryCompleted.editorURL, /oa\.example|documents|Quarterly/i
 const retryConsumed = await new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: retryClaimed.handoffID },
-    { url: retryCompleted.editorURL },
+    { url: retryCompleted.editorURL, tab: { id: 7 } },
     resolve
   );
 });
@@ -201,7 +203,7 @@ const createdDoc = await new Promise(resolve => {
 assert.equal(createdDoc.ok, true);
 const docHandoffID = new URL(createdDoc.editorURL).searchParams.get('handoff');
 const consumedDoc = await new Promise(resolve => {
-  messageListener({ type: 'consume-editor-handoff', handoffID: docHandoffID }, { url: createdDoc.editorURL }, resolve);
+  messageListener({ type: 'consume-editor-handoff', handoffID: docHandoffID }, { url: createdDoc.editorURL, tab: { id: 7 } }, resolve);
 });
 assert.equal(consumedDoc.ok, true);
 assert.equal(consumedDoc.handoff.expectedFormat, 'doc');
@@ -246,7 +248,7 @@ assert.deepEqual(wrongSender, { ok: false });
 const rightSender = await new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: senderProtectedID },
-    { url: senderProtected.editorURL },
+    { url: senderProtected.editorURL, tab: { id: 7 } },
     resolve
   );
 });
@@ -257,8 +259,93 @@ now += 120_001;
 const expired = await new Promise(resolve => {
   messageListener(
     { type: 'consume-editor-handoff', handoffID: new URL(expiring.editorURL).searchParams.get('handoff') },
-    { url: expiring.editorURL },
+    { url: expiring.editorURL, tab: { id: 7 } },
     resolve
   );
 });
 assert.deepEqual(expired, { ok: false });
+
+// A failed OA read preserves recovery context but never invents an identity.
+const failedSource = await new Promise(resolve => {
+  messageListener(
+    { type: 'create-editor-handoff', activation: { ...activation, sourceIdentity: undefined, sourceVerificationFailed: true } },
+    { url: returnURL, tab: { id: 7 } }, resolve
+  );
+});
+assert.equal(failedSource.ok, true);
+const failureID = new URL(failedSource.editorURL).searchParams.get('handoff');
+const failedConsumed = await new Promise(resolve => {
+  messageListener({ type: 'consume-editor-handoff', handoffID: failureID },
+    { url: failedSource.editorURL, tab: { id: 7 } }, resolve);
+});
+assert.equal(failedConsumed.ok, true);
+assert.equal(failedConsumed.handoff.sourceVerificationFailed, true);
+assert.equal(failedConsumed.handoff.sourceIdentity, undefined);
+assert.equal(failedConsumed.handoff.returnURL, returnURL);
+
+// A handoff remains available to its original tab after an unrelated tab probes it.
+const bound = await createHandoff();
+const boundID = new URL(bound.editorURL).searchParams.get('handoff');
+for (const tab of [undefined, { id: 8 }]) {
+  assert.deepEqual(await new Promise(resolve => {
+    messageListener({ type: 'consume-editor-handoff', handoffID: boundID },
+      { url: bound.editorURL, tab }, resolve);
+  }), { ok: false });
+}
+assert.equal((await new Promise(resolve => {
+  messageListener({ type: 'consume-editor-handoff', handoffID: boundID },
+    { url: bound.editorURL, tab: { id: 7 } }, resolve);
+})).ok, true);
+
+const tamperedContext = { ...successful[0].handoff,
+  sourceURL: 'https://oa.example.test/documents/Other.docx', sourcePath: '/documents/Other.docx' };
+assert.deepEqual(await new Promise(resolve => {
+  messageListener({ type: 'create-reverification-handoff', previousHandoff: tamperedContext },
+    { url: bound.editorURL, tab: { id: 7 } }, resolve);
+}), { ok: false });
+const requestRetry = () => new Promise(resolve => {
+  messageListener({ type: 'create-reverification-handoff', previousHandoff: successful[0].handoff },
+    { url: bound.editorURL, tab: { id: 7 } }, resolve);
+});
+const duplicateRetryResults = await Promise.all([requestRetry(), requestRetry()]);
+assert.equal(duplicateRetryResults.filter(result => result.ok).length, 1);
+const failedRetryClaim = await new Promise(resolve => {
+  messageListener({ type: 'claim-reverification' }, { url: returnURL, tab: { id: 7 } }, resolve);
+});
+const failedRetryComplete = await new Promise(resolve => {
+  messageListener({ type: 'complete-reverification-handoff', handoffID: failedRetryClaim.handoffID,
+    sourceVerificationFailed: true }, { url: returnURL, tab: { id: 7 } }, resolve);
+});
+assert.equal(failedRetryComplete.ok, true);
+const failedRetryConsumed = await new Promise(resolve => {
+  messageListener({ type: 'consume-editor-handoff', handoffID: failedRetryClaim.handoffID },
+    { url: failedRetryComplete.editorURL, tab: { id: 7 } }, resolve);
+});
+assert.equal(failedRetryConsumed.handoff.sourceVerificationFailed, true);
+assert.equal(failedRetryConsumed.handoff.sourceIdentity, undefined);
+assert.equal(failedRetryConsumed.handoff.returnURL, returnURL);
+
+const failedRetryAgain = () => new Promise(resolve => {
+  messageListener({ type: 'create-reverification-handoff', previousHandoff: failedRetryConsumed.handoff },
+    { url: failedRetryComplete.editorURL, tab: { id: 7 } }, resolve);
+});
+assert.equal((await new Promise(resolve => {
+  messageListener({ type: 'create-reverification-handoff', previousHandoff: failedRetryConsumed.handoff },
+    { url: failedRetryComplete.editorURL, tab: { id: 7 } }, resolve);
+})).ok, true);
+assert.equal((await new Promise(resolve => {
+  messageListener({ type: 'cancel-reverification' },
+    { url: failedRetryComplete.editorURL, tab: { id: 7 } }, resolve);
+})).ok, true);
+assert.equal((await new Promise(resolve => {
+  messageListener({ type: 'create-reverification-handoff', previousHandoff: failedRetryConsumed.handoff },
+    { url: failedRetryComplete.editorURL, tab: { id: 7 } }, resolve);
+})).ok, true);
+
+// Closing the source tab removes both retry context and unconsumed handoffs.
+const closing = await createHandoff();
+await tabRemovedListener(7);
+assert.deepEqual(await new Promise(resolve => {
+  messageListener({ type: 'consume-editor-handoff', handoffID: new URL(closing.editorURL).searchParams.get('handoff') },
+    { url: closing.editorURL, tab: { id: 7 } }, resolve);
+}), { ok: false });

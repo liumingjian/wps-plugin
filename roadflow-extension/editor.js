@@ -41,7 +41,7 @@ function validatedHandoff(value, handoffID) {
       typeof value.sourceURL !== 'string' || typeof value.sourcePath !== 'string' ||
       typeof value.title !== 'string' || typeof value.filename !== 'string' ||
       typeof value.gatewayTemplate !== 'string' || !['doc', 'docx'].includes(value.expectedFormat) ||
-      !identity ||
+      (!identity && !(value.sourceVerificationFailed === true && value.sourceIdentity === undefined)) ||
       !Number.isFinite(value.createdAt) || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now()) return undefined;
   try {
     const returnURL = new URL(value.returnURL);
@@ -264,7 +264,12 @@ async function reverify() {
   if (!created?.ok || created.returnURL !== currentHandoff.returnURL) {
     throw new Error('Fresh Editor Handoff was not created.');
   }
-  location.replace(created.returnURL);
+  try {
+    location.replace(created.returnURL);
+  } catch (error) {
+    await chrome.runtime.sendMessage({ type: 'cancel-reverification' });
+    throw error;
+  }
 }
 
 async function enterEditor() {
@@ -279,6 +284,13 @@ async function enterEditor() {
   try { handoff = await consumeHandoff(handoffID); } catch {}
   if (!handoff) {
     showUnavailableEditor();
+    return;
+  }
+  currentHandoff = handoff;
+  title.textContent = handoff.title;
+  sourceLabel.textContent = handoff.sourcePath;
+  if (handoff.sourceVerificationFailed === true) {
+    showVerificationFailure();
     return;
   }
   try {

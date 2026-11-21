@@ -88,6 +88,7 @@ async function loadEditor({
         async sendMessage(message) {
           messages.push(message);
           if (message.type === 'consume-editor-handoff') return consumeResponse;
+          if (message.type === 'cancel-reverification') return { ok: true };
           if (message.type === 'create-reverification-handoff') {
             return { ok: true, returnURL: handoff.returnURL };
           }
@@ -437,3 +438,22 @@ for (const [search, response] of [
   assert.equal(unavailable.elements['editor-host'].children.length, 0);
   assert.match(unavailable.elements['editor-status'].textContent, /无法打开编辑器/);
 }
+
+const failedSourceHandoff = { ...handoff, sourceIdentity: undefined, sourceVerificationFailed: true };
+const failedSourceEditor = await loadEditor({ consumeResponse: { ok: true, handoff: failedSourceHandoff } });
+assert.equal(failedSourceEditor.elements['save-document'].disabled, true);
+assert.equal(failedSourceEditor.elements['retry-verification'].hidden, false);
+assert.equal(failedSourceEditor.elements['return-to-oa'].disabled, false);
+assert.deepEqual(failedSourceEditor.documentOpens, []);
+assert.deepEqual(failedSourceEditor.fetches, []);
+failedSourceEditor.elements['return-to-oa'].clickListener();
+assert.equal(failedSourceEditor.replacementURL(), handoff.returnURL);
+
+const retryNavigationFailure = await loadEditor({
+  consumeResponse: { ok: true, handoff: failedSourceHandoff }, replaceError: new Error('navigation blocked')
+});
+retryNavigationFailure.elements['retry-verification'].clickListener();
+await settle();
+assert.deepEqual(retryNavigationFailure.messages.slice(1).map(message => message.type),
+  ['create-reverification-handoff', 'cancel-reverification']);
+assert.equal(retryNavigationFailure.elements['retry-verification'].disabled, false);
