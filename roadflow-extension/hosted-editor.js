@@ -361,7 +361,9 @@ async function saveDocument() {
   returnButton.disabled = true;
   try {
     const officeFile = activeOfficeFile();
-    if (currentContext.editorKind === 'spreadsheet') {
+    if (ftpOfficeEditor && currentContext.editorKind === 'spreadsheet') {
+      await ftpOfficeEditor.saveSpreadsheet(application, currentContext);
+    } else if (currentContext.editorKind === 'spreadsheet') {
       saveSpreadsheetDocument(officeFile);
     } else {
       if (!officeFile || typeof officeFile.saveURL_FormData !== 'function') {
@@ -372,7 +374,8 @@ async function saveDocument() {
       if (result !== true) throw new Error('overwrite rejected');
     }
     editorState = 'overwritten';
-    status.textContent = '已保存';
+    const refreshSucceeded = !ftpOfficeEditor || await ftpOfficeEditor.refreshFileVersion(currentContext);
+    status.textContent = refreshSucceeded ? '已保存' : '已保存。请刷新文件列表后重新打开。';
     saveButton.textContent = '保存';
   } catch (error) {
     debug('wps-save-failed', { error: debugError(error), officeSaveURL: debugURL(currentContext.officeSaveURL) });

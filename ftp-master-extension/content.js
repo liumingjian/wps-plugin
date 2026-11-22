@@ -24,7 +24,7 @@
     return script;
   }
 
-  async function openEditor(popup, entry, versionId) {
+  async function openEditor(popup, entry, fileId, versionId) {
     const response = await fetch(entry.href, {
       method: 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versionId })
@@ -50,7 +50,7 @@
     doc.title = 'ftp-master 在线编辑';
     doc.querySelector('#return-to-oa').textContent = '返回文件列表';
     doc.querySelector('#retry-verification').textContent = '返回后重新打开';
-    const context = JSON.stringify(permit).replaceAll('<', '\\u003c');
+    const context = JSON.stringify({ ...permit, fileId }).replaceAll('<', '\\u003c');
     doc.body.append(inlineScript(doc, formats), inlineScript(doc, integration),
       inlineScript(doc, 'globalThis.FtpOfficePermit = ' + context + '\n'), inlineScript(doc, editor));
     const url = URL.createObjectURL(new Blob(['<!doctype html>', doc.documentElement.outerHTML], { type: 'text/html' }));
@@ -66,8 +66,9 @@
     if (!entry || !event.isTrusted || event.defaultPrevented || event.button !== 0 ||
         event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || entry.origin !== origin ||
         entry.username || entry.password || entry.search || entry.hash ||
-        !/^\/api\/files\/[1-9][0-9]*\/office-edits$/.test(entry.pathname) ||
         !/^[1-9][0-9]*$/.test(entry.dataset.ftpOfficeVersion || '')) return;
+    const fileId = /^\/api\/files\/([1-9][0-9]*)\/office-edits$/.exec(entry.pathname)?.[1];
+    if (!fileId) return;
     const versionId = Number(entry.dataset.ftpOfficeVersion);
     if (!Number.isSafeInteger(versionId)) return;
 
@@ -79,7 +80,7 @@
     }
     popup.document.title = 'ftp-master 在线编辑';
     popup.document.body.textContent = '正在打开文档…';
-    void openEditor(popup, entry, versionId).catch(error => {
+    void openEditor(popup, entry, fileId, versionId).catch(error => {
       if (popup.closed) return;
       popup.document.body.textContent = error.message;
       const close = popup.document.createElement('button');

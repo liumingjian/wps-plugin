@@ -17,7 +17,8 @@ function installWPSBoundary(scenario) {
     spreadsheetSaveCalls: [],
     workbookSaveCalls: [],
     highlightChangesCalls: [],
-    saveAsCalls: []
+    saveAsCalls: [],
+    base64Exports: []
   };
   globalThis.__roadFlowObservations = observations;
   const editorKind = scenario.editorKind || 'writer';
@@ -66,6 +67,10 @@ function installWPSBoundary(scenario) {
     ActiveDocument: activeDocument,
     ActiveWorkbook: activeWorkbook,
     DisplayAlerts: true,
+    saveAsBase64Str(format) {
+      observations.base64Exports.push(format);
+      return 'UEsDBA==';
+    },
     SaveDocumentToServer(url) {
       observations.spreadsheetSaveCalls.push({ url });
       const result = spreadsheetSaveResults.length ? spreadsheetSaveResults.shift() : true;
@@ -450,9 +455,10 @@ for (const viewport of [
   });
 }
 
-for (const { name, format, editable, mimeType, saveCalls, deliveryRejected } of [
-  { name: 'opens and saves DOCX', format: 'docx', editable: '正文可编辑', mimeType: 'application/x-wps', saveCalls: 'overwriteCalls' },
-  { name: 'opens and saves XLSX', format: 'xlsx', editable: '表格可编辑', mimeType: 'application/x-et', saveCalls: 'spreadsheetSaveCalls' },
+for (const { name, format, editable, mimeType, saveRejected, deliveryRejected } of [
+  { name: 'opens and saves DOCX', format: 'docx', editable: '正文可编辑', mimeType: 'application/x-wps' },
+  { name: 'opens and saves XLSX', format: 'xlsx', editable: '表格可编辑', mimeType: 'application/x-et' },
+  { name: 'keeps ET open when saving fails and retries', format: 'xlsx', editable: '表格可编辑', mimeType: 'application/x-et', saveRejected: true },
   { name: 'keeps saving disabled when delivery is rejected', format: 'docx', deliveryRejected: true }
 ]) {
   test(`ftp-master ${name}`, async ({ context, page }) => {
@@ -465,6 +471,7 @@ for (const { name, format, editable, mimeType, saveCalls, deliveryRejected } of 
       deliveryCheckUrl: `${base}/delivery`, saveUrl: `${base}/save`
     };
     let deliveryChecks = 0;
+    let saveRequests = 0;
     const editorKind = format === 'xlsx' ? 'spreadsheet' : 'writer';
     await context.addInitScript(installWPSBoundary, { editorKind });
     await context.addInitScript(origin => {
@@ -497,6 +504,16 @@ for (const { name, format, editable, mimeType, saveCalls, deliveryRejected } of 
         deliveryChecks += 1;
         if (deliveryRejected && deliveryChecks === 2) await route.fulfill({ status: 401 });
         else await route.fulfill({ json: { delivered: deliveryChecks === 2 } });
+      } else if (path === permit.saveUrl) {
+        saveRequests += 1;
+        expect(route.request().method()).toBe('POST');
+        const multipart = route.request().postDataBuffer();
+        expect(multipart.toString('ascii')).toContain('name="file"; filename=""');
+        expect(multipart.includes(Buffer.from([0x50, 0x4b, 0x03, 0x04]))).toBe(true);
+        if (saveRejected && saveRequests === 1) await route.fulfill({ status: 503, json: { Success: false } });
+        else await route.fulfill({ json: { Success: true } });
+      } else if (path === '/api/tree/7/versions') {
+        await route.fulfill({ json: [{ id: 24, size: 4096, format }] });
       } else if (path.startsWith('/assets/') && Object.hasOwn(assets, path.slice(8))) {
         const name = path.slice(8);
         await route.fulfill({
@@ -524,12 +541,24 @@ for (const { name, format, editable, mimeType, saveCalls, deliveryRejected } of 
     expect(await popup.evaluate(key => globalThis.__roadFlowObservations[key][0].url, openCalls))
       .toBe(`${origin}${permit.documentUrl}`);
     await popup.getByRole('button', { name: '保存', exact: true }).click();
+    if (saveRejected) {
+      await expect(popup.locator('#editor-status')).toHaveText('保存失败');
+      await expect(popup.locator('#wps-surface')).toBeVisible();
+      await expect(page.getByRole('link', { name: '在线编辑' })).toHaveAttribute('data-ftp-office-version', '23');
+      await popup.getByRole('button', { name: '重试保存' }).click();
+    }
     await expect(popup.locator('#editor-status')).toHaveText('已保存');
-    expect(await popup.evaluate(key => globalThis.__roadFlowObservations[key][0].url, saveCalls))
-      .toBe(`${origin}${permit.saveUrl}`);
+    const observations = await popup.evaluate(() => globalThis.__roadFlowObservations);
+    if (format === 'xlsx') {
+      expect(observations.base64Exports).toEqual(saveRejected ? ['xlsx', 'xlsx'] : ['xlsx']);
+      expect(observations.spreadsheetSaveCalls).toEqual([]);
+      expect(saveRequests).toBe(saveRejected ? 2 : 1);
+    } else {
+      expect(observations.overwriteCalls[0].url).toBe(`${origin}${permit.saveUrl}`);
+    }
     const returned = popup.waitForEvent('close');
     await popup.getByRole('button', { name: '返回文件列表' }).click();
     await returned;
-    await expect(page.getByRole('link', { name: '在线编辑' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '在线编辑' })).toHaveAttribute('data-ftp-office-version', '24');
   });
 }
