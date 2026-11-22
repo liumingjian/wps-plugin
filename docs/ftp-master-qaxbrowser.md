@@ -21,8 +21,12 @@ unpacked extension. Refresh the ftp-master page. The extension advertises its
 availability on that origin when both WPS MIME types are present. Use a new
 `OUTPUT` directory when staging for another deployment.
 
-The extension acts on explicit ftp-master edit entries and requests the selected
-File Version through the existing authenticated API. The embedded WPS surface
+Select the filename to open a read-only WPS preview. Select the pencil in the
+file row to edit. Both tabs close through the return-to-list control.
+
+The extension requests the selected File Version through the authenticated
+ftp-master API. A preview permit requires Browse and carries no save URL.
+The embedded WPS surface
 receives the permit's Document Gateway URL. The editor checks that delivery has
 completed before it enables editing and saving. Writer submits through
 `saveURL_FormData`. ET exports the workbook with `saveAsBase64Str` and the

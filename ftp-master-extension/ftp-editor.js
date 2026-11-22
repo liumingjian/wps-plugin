@@ -11,17 +11,19 @@
       throw new Error('编辑授权无效');
     }
     const base = `/api/office/permits/${permit.permitId}`;
+    const preview = permit.preview === true;
     const documentURL = new URL(permit.documentUrl, location.origin);
-    const officeSaveURL = new URL(permit.saveUrl, location.origin);
     const deliveryURL = new URL(permit.deliveryCheckUrl, location.origin);
-    for (const url of [documentURL, officeSaveURL, deliveryURL]) {
+    const officeSaveURL = preview ? null : new URL(permit.saveUrl, location.origin);
+    for (const url of officeSaveURL ? [documentURL, deliveryURL, officeSaveURL] : [documentURL, deliveryURL]) {
       if (url.origin !== location.origin || url.username || url.password || url.search || url.hash) {
         throw new Error('编辑授权地址无效');
       }
     }
     if (!documentURL.pathname.startsWith(`${base}/document/`) ||
         !/^\/[^/]+$/.test(documentURL.pathname.slice(`${base}/document`.length)) ||
-        officeSaveURL.pathname !== `${base}/save` || deliveryURL.pathname !== `${base}/delivery`) {
+        (preview ? permit.saveUrl !== undefined : officeSaveURL.pathname !== `${base}/save`) ||
+        deliveryURL.pathname !== `${base}/delivery`) {
       throw new Error('编辑授权地址无效');
     }
     return {
@@ -31,8 +33,9 @@
       expectedFormat: permit.format,
       editorKind: capability.editorKind,
       documentURL: documentURL.href,
-      officeSaveURL: officeSaveURL.href,
+      officeSaveURL: officeSaveURL?.href,
       deliveryURL: deliveryURL.href,
+      preview,
       returnMode: 'close'
     };
   }
@@ -92,7 +95,7 @@
             !RoadFlowFormatCapabilities.forFormat(latest.format) ||
             !Number.isSafeInteger(latest.size) || latest.size <= 0 || latest.size > maxOfficeBytes) return false;
         const editURL = new URL(`/api/files/${context.fileId}/office-edits`, location.origin).href;
-        for (const entry of window.opener.document.querySelectorAll('a[data-ftp-office-edit="1"]')) {
+        for (const entry of window.opener.document.querySelectorAll('a[data-ftp-office-edit="1"], a[data-ftp-office-preview="1"]')) {
           if (entry.href === editURL && Number(entry.dataset.ftpOfficeVersion) < latest.id) {
             entry.dataset.ftpOfficeVersion = String(latest.id);
           }

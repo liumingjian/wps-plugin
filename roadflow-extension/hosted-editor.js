@@ -252,7 +252,9 @@ function openOfficeFile() {
     const openWorkbook = application?.Workbooks?.Open;
     if (typeof openWorkbook === 'function') {
       debug('wps-open-workbook', { documentURL: debugURL(currentContext.documentURL) });
-      openedOfficeFile = openWorkbook.call(application.Workbooks, currentContext.documentURL);
+      openedOfficeFile = currentContext.preview
+        ? openWorkbook.call(application.Workbooks, currentContext.documentURL, 0, true)
+        : openWorkbook.call(application.Workbooks, currentContext.documentURL);
       debug('wps-open-workbook-returned', {
         objectAvailable: Boolean(openedOfficeFile && ['function', 'object'].includes(typeof openedOfficeFile))
       });
@@ -262,7 +264,7 @@ function openOfficeFile() {
   if (typeof application?.openDocument !== 'function') {
     throw new Error('WPS 打开接口不可用');
   }
-  openedOfficeFile = application.openDocument(currentContext.documentURL, false);
+  openedOfficeFile = application.openDocument(currentContext.documentURL, currentContext.preview === true);
   return openedOfficeFile;
 }
 
@@ -283,17 +285,25 @@ async function enterEditor() {
     ? ftpOfficeEditor.launch(globalThis.FtpOfficePermit)
     : await readRoadFlowContext();
   currentContext = context;
+  saveButton.hidden = context.preview === true;
   title.textContent = context.title;
   sourceLabel.textContent = context.sourcePath || '';
   if (ftpOfficeEditor && context.editorKind === 'spreadsheet') status.textContent = '正在打开表格';
   if (ftpOfficeEditor) await ftpOfficeEditor.checkDelivery(context.deliveryURL, false);
   mountWPS();
   application = await waitForApplication();
-  debug('wps-open-document-start', { documentURL: debugURL(context.documentURL), readOnly: false });
+  debug('wps-open-document-start', { documentURL: debugURL(context.documentURL), readOnly: context.preview === true });
   if (openOfficeFile() === false && ftpOfficeEditor) throw new Error('WPS 无法打开文件');
   debug('wps-open-document-called', { documentURL: debugURL(context.documentURL), editorKind: context.editorKind });
   await waitForActiveOfficeFile();
   if (ftpOfficeEditor) await ftpOfficeEditor.checkDelivery(context.deliveryURL, true);
+  if (context.preview) {
+    host.className = 'unlocked';
+    editorState = 'preview';
+    status.textContent = '只读预览';
+    returnButton.disabled = false;
+    return;
+  }
   enableRevisionTracking();
   host.className = 'unlocked';
   editorState = 'editable';

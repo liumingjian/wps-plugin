@@ -6,9 +6,10 @@
   const isSpreadsheetEditorAvailable = navigator.mimeTypes.namedItem('application/x-et');
   if (window !== top || location.origin !== origin || !isTextEditorAvailable || !isSpreadsheetEditorAvailable) return;
 
-  const markAvailable = () => document.documentElement.setAttribute(
-    'data-ftp-office-plugin', chrome.runtime.getManifest().version
-  );
+  const markAvailable = () => {
+    document.documentElement.setAttribute('data-ftp-office-plugin', chrome.runtime.getManifest().version);
+    document.documentElement.setAttribute('data-ftp-office-preview', '1');
+  };
   if (document.documentElement) markAvailable();
   else document.addEventListener('DOMContentLoaded', markAvailable, { once: true });
 
@@ -24,12 +25,12 @@
     return script;
   }
 
-  async function openEditor(popup, entry, fileId, versionId) {
+  async function openEditor(popup, entry, fileId, versionId, preview) {
     const response = await fetch(entry.href, {
       method: 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versionId })
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(preview ? { versionId, preview } : { versionId })
     });
-    if (response.status !== 201) throw new Error('无法开始编辑，请刷新文件列表后重试');
+    if (response.status !== 201) throw new Error(preview ? '无法预览，请刷新文件列表后重试' : '无法开始编辑，请刷新文件列表后重试');
     const permit = await response.json();
     const supportedFormats = ['doc', 'docx', 'wps', 'xls', 'xlsx'];
     if (permit.versionId !== versionId || !supportedFormats.includes(permit.format) ||
@@ -47,10 +48,10 @@
     style.textContent = css;
     doc.querySelector('link[rel="stylesheet"]').replaceWith(style);
     for (const script of doc.querySelectorAll('script')) script.remove();
-    doc.title = 'ftp-master 在线编辑';
+    doc.title = preview ? 'ftp-master 文件预览' : 'ftp-master 在线编辑';
     doc.querySelector('#return-to-oa').textContent = '返回文件列表';
     doc.querySelector('#retry-verification').textContent = '返回后重新打开';
-    const context = JSON.stringify({ ...permit, fileId }).replaceAll('<', '\\u003c');
+    const context = JSON.stringify({ ...permit, fileId, preview }).replaceAll('<', '\\u003c');
     doc.body.append(inlineScript(doc, formats), inlineScript(doc, integration),
       inlineScript(doc, 'globalThis.FtpOfficePermit = ' + context + '\n'), inlineScript(doc, editor));
     const url = URL.createObjectURL(new Blob(['<!doctype html>', doc.documentElement.outerHTML], { type: 'text/html' }));
@@ -62,7 +63,7 @@
   }
 
   document.addEventListener('click', event => {
-    const entry = event.target?.closest?.('a[data-ftp-office-edit="1"]');
+    const entry = event.target?.closest?.('a[data-ftp-office-edit="1"], a[data-ftp-office-preview="1"]');
     if (!entry || !event.isTrusted || event.defaultPrevented || event.button !== 0 ||
         event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || entry.origin !== origin ||
         entry.username || entry.password || entry.search || entry.hash ||
@@ -78,9 +79,10 @@
       window.alert('请允许本站打开编辑标签页，再试一次。');
       return;
     }
-    popup.document.title = 'ftp-master 在线编辑';
+    const preview = entry.dataset.ftpOfficePreview === '1';
+    popup.document.title = preview ? 'ftp-master 文件预览' : 'ftp-master 在线编辑';
     popup.document.body.textContent = '正在打开文档…';
-    void openEditor(popup, entry, fileId, versionId).catch(error => {
+    void openEditor(popup, entry, fileId, versionId, preview).catch(error => {
       if (popup.closed) return;
       popup.document.body.textContent = error.message;
       const close = popup.document.createElement('button');
