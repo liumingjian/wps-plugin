@@ -1,5 +1,7 @@
 # ftp-master on Google Chrome and desktop WPS
 
+The Chrome prototype below records the experiment on macOS. The current ftp-master editing integration targets [Qaxbrowser with embedded WPS](ftp-master-qaxbrowser.md).
+
 2026-11-21. The local acceptance target is Google Chrome on macOS arm64, with the file browser in Chrome and editing in the desktop WPS application. A disposable extension and Native Messaging Host completed a real DOCX and XLSX edit, save and reopen against ftp-master on this Mac.
 
 ## Target and evidence
